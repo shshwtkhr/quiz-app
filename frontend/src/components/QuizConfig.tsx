@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { fetchTopics, generateQuiz } from '@/lib/api';
 import { TopicSelection } from '@/types';
 import { useQuizStore } from '@/stores/quiz-store-provider';
+import UploadDocumentModal from './UploadDocumentModal';
 
 export default function QuizConfig() {
   const router = useRouter();
@@ -15,8 +16,10 @@ export default function QuizConfig() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
-  useEffect(() => {
+  const loadTopics = () => {
+    setLoading(true);
     fetchTopics()
       .then((data) =>
         setTopics(
@@ -30,7 +33,15 @@ export default function QuizConfig() {
       )
       .catch(() => setError('Failed to load topics. Is the backend running?'))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadTopics();
   }, []);
+
+  const handleUploadSuccess = () => {
+    loadTopics();
+  };
 
   const toggleTopic = (index: number) => {
     setTopics((prev) =>
@@ -84,7 +95,18 @@ export default function QuizConfig() {
 
       {/* Topics Grid */}
       <section className="mb-10 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-        <h2 className="text-xl font-semibold text-text-primary mb-5">Choose Topics</h2>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-xl font-semibold text-text-primary">Choose Topics</h2>
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-surface-light border border-glass-border hover:border-primary/50 hover:text-primary transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Upload Document
+          </button>
+        </div>
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[...Array(6)].map((_, i) => (
@@ -213,6 +235,12 @@ export default function QuizConfig() {
           </button>
         </div>
       </div>
+
+      <UploadDocumentModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSuccess={handleUploadSuccess}
+      />
     </div>
   );
 }

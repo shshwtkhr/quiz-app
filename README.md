@@ -12,12 +12,14 @@ A modern, dynamic, and premium Quiz Application built with Next.js and Node.js.
 - **Adjustable Time Limits**: A sleek slider to set a custom time limit for the quiz.
 - **Real-time Quiz Engine**: Interactive quiz interface with smooth transitions, progress tracking, and instant validation.
 - **Detailed Results Review**: View score breakdowns, review correct answers, and read detailed explanations for every question.
+- **AI Document Upload**: Upload unstructured PDFs, DOCX, or TXT files and have Google's Gemini AI automatically parse and convert them into structured quiz questions!
 - **Premium Aesthetics**: Features a highly polished dark-mode UI with glassmorphism effects, dynamic gradients, and custom animations.
-- **E2E Test Automation**: Includes a Puppeteer script that fully automates testing the app and records a visual demo video with simulated click ripples.
+- **E2E Test Automation**: Includes a Puppeteer script that fully automates testing the app (including AI uploads) and records a visual demo video with simulated click ripples.
 
 ## Prerequisites
 - Node.js (v18+)
 - MongoDB (running locally on `mongodb://localhost:27017` or configured via `.env`)
+- **Google Gemini API Key**: Required for the AI Document Upload feature. Add this to `backend/.env` as `GEMINI_API_KEY`.
 
 ## Getting Started
 

@@ -84,6 +84,69 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
     await page.reload({ waitUntil: 'networkidle0' });
     await new Promise(r => setTimeout(r, 2000));
 
+    // ==== FILE UPLOAD FLOW ====
+    console.log('Testing File Upload Flow...');
+    const buttons = await page.$$('button');
+    let uploadBtn = null;
+    for (const b of buttons) {
+      const text = await page.evaluate(el => el.textContent, b);
+      if (text && text.includes('Upload Document')) {
+        uploadBtn = b;
+        break;
+      }
+    }
+    
+    if (uploadBtn) {
+      await slowClick(page, uploadBtn);
+      await new Promise(r => setTimeout(r, 1000));
+      
+      const fileInput = await page.$('input[type="file"]');
+      if (fileInput) {
+        const fs = require('fs');
+        const testFilePath = __dirname + '/test_upload.txt';
+        fs.writeFileSync(testFilePath, "Sample topic: Automation\\nWhat is Puppeteer?\\nOptions: Browser automation tool, Video game, Text editor, Music player\\nCorrect Answer: Browser automation tool\\nExplanation: Puppeteer provides a high-level API to control Chrome.");
+        
+        await fileInput.uploadFile(testFilePath);
+        await new Promise(r => setTimeout(r, 1000));
+        
+        // Find "Upload" button inside modal
+        const modalBtns = await page.$$('button');
+        for (const b of modalBtns) {
+          const text = await page.evaluate(el => el.textContent, b);
+          // Looking for exact "Upload" button, avoiding "Upload Document" title
+          if (text && text.trim() === 'Upload') {
+             await slowClick(page, b);
+             break;
+          }
+        }
+        
+        // Wait for upload success and modal to close
+        // We can wait for the modal container to disappear
+        console.log("Waiting for AI parsing to finish...");
+        try {
+            await page.waitForFunction(() => {
+                // The modal has an h2 with "Upload Document"
+                return !Array.from(document.querySelectorAll('h2')).some(h => h.textContent === 'Upload Document');
+            }, { timeout: 30000 });
+        } catch(e) {
+            console.log("Modal didn't close in time.");
+        }
+        
+        // Wait for the new topic "Automation" to appear in the topics list to avoid stale elements
+        try {
+            await page.waitForFunction(() => {
+                return Array.from(document.querySelectorAll('button.glass-card')).some(b => b.textContent.includes('Automation'));
+            }, { timeout: 10000 });
+        } catch(e) {
+            console.log("New topic 'Automation' did not appear.");
+        }
+        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 2000)); // allow topics to re-fetch and render
+        if(fs.existsSync(testFilePath)) fs.unlinkSync(testFilePath);
+      }
+    }
+    // ==== END FILE UPLOAD FLOW ====
+
     // Wait for topics to load (buttons with glass-card class)
     await page.waitForSelector('.glass-card', { timeout: 10000 });
     
