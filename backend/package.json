@@ -16,7 +16,7 @@
     "mammoth": "^1.12.0",
     "mongoose": "^8.7.0",
     "multer": "^2.2.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",
