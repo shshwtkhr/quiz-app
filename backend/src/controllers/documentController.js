@@ -1,5 +1,6 @@
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
+const { PDFDocument } = require('pdf-lib');
 const { GoogleGenAI } = require('@google/genai');
 const Question = require('../models/Question');
 const Config = require('../models/Config');
@@ -40,7 +41,10 @@ exports.uploadDocument = async (req, res, next) => {
       return res.status(400).json({ error: 'Unsupported file type. Please upload a PDF, DOCX, or TXT file.' });
     }
 
-    if (!extractedText.trim()) {
+    const isPdf = mimetype === 'application/pdf' || originalname.endsWith('.pdf');
+    const isImagePdf = isPdf && !extractedText.trim();
+    
+    if (!extractedText.trim() && !isImagePdf) {
       return res.status(400).json({ error: 'Failed to extract text from the document or document is empty.' });
     }
 
@@ -54,22 +58,44 @@ exports.uploadDocument = async (req, res, next) => {
       res.write(JSON.stringify({ type: 'ping' }) + '\n');
     }, 15000);
 
-    // 1. Chunk the text
-    const maxChunkSize = 15000;
+    // 1. Chunk the document
     const chunks = [];
-    let currentChunk = '';
-    // Split by paragraphs to avoid cutting mid-sentence
-    const paragraphs = extractedText.split(/\n\s*\n/);
     
-    for (const p of paragraphs) {
-      if (currentChunk.length + p.length > maxChunkSize && currentChunk.length > 0) {
-        chunks.push(currentChunk);
-        currentChunk = '';
+    if (isImagePdf) {
+      // Split PDF into smaller page-chunks so Gemini output doesn't truncate
+      const pdfDoc = await PDFDocument.load(buffer);
+      const totalPages = pdfDoc.getPageCount();
+      const MAX_PAGES = 5;
+      
+      for (let i = 0; i < totalPages; i += MAX_PAGES) {
+         const subDocument = await PDFDocument.create();
+         const end = Math.min(i + MAX_PAGES, totalPages);
+         const pages = await subDocument.copyPages(pdfDoc, Array.from({length: end - i}, (_, idx) => i + idx));
+         pages.forEach(page => subDocument.addPage(page));
+         const pdfBytes = await subDocument.save();
+         chunks.push({
+           inlineData: {
+             data: Buffer.from(pdfBytes).toString("base64"),
+             mimeType: "application/pdf"
+           }
+         });
       }
-      currentChunk += p + '\n\n';
-    }
-    if (currentChunk.trim().length > 0) {
-      chunks.push(currentChunk);
+    } else {
+      // Chunk the extracted text
+      const maxChunkSize = 15000;
+      let currentChunk = '';
+      const paragraphs = extractedText.split(/\n\s*\n/);
+      
+      for (const p of paragraphs) {
+        if (currentChunk.length + p.length > maxChunkSize && currentChunk.length > 0) {
+          chunks.push(currentChunk);
+          currentChunk = '';
+        }
+        currentChunk += p + '\n\n';
+      }
+      if (currentChunk.trim().length > 0) {
+        chunks.push(currentChunk);
+      }
     }
 
     // 2. Concurrency Limiter Helper
@@ -90,12 +116,15 @@ exports.uploadDocument = async (req, res, next) => {
     // 3. Process chunks
     const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, a subtopic (if you cannot determine a specific subtopic, use "General"), the question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. Do not include any markdown formatting or extra text.\n\nText:\n`;
     
-    await asyncBatch(chunks, 3, async (chunkText) => {
-      if (!chunkText.trim()) return;
+    await asyncBatch(chunks, 3, async (chunk) => {
+      if (typeof chunk === 'string' && !chunk.trim()) return;
+      
+      const contentsPayload = chunk.inlineData ? [promptBase, chunk] : promptBase + chunk;
+      
       try {
         const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
-          contents: promptBase + chunkText,
+          contents: contentsPayload,
           config: {
             responseMimeType: 'application/json',
             responseSchema: {
