@@ -33,10 +33,10 @@ exports.uploadQuestions = async (req, res, next) => {
       }
     }
 
-    // Build bulkWrite operations for upsert (deduplication by topic + question_text)
+    // Build bulkWrite operations for upsert (deduplication by topic, subtopic + question_text)
     const operations = questions.map((q) => ({
       updateOne: {
-        filter: { topic: q.topic, question_text: q.question_text },
+        filter: { topic: q.topic, subtopic: q.subtopic || 'General', question_text: q.question_text },
         update: { $set: q },
         upsert: true,
       },
@@ -62,7 +62,24 @@ exports.uploadQuestions = async (req, res, next) => {
 exports.getTopics = async (req, res, next) => {
   try {
     const topics = await Question.aggregate([
-      { $group: { _id: '$topic', count: { $sum: 1 } } },
+      { 
+        $group: { 
+          _id: { topic: '$topic', subtopic: '$subtopic' }, 
+          count: { $sum: 1 } 
+        } 
+      },
+      {
+        $group: {
+          _id: '$_id.topic',
+          count: { $sum: '$count' },
+          subtopics: {
+            $push: {
+              name: '$_id.subtopic',
+              count: '$count'
+            }
+          }
+        }
+      },
       { $sort: { _id: 1 } },
     ]);
 

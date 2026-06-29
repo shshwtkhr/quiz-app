@@ -12,6 +12,7 @@ jest.mock('@google/genai', () => {
             text: JSON.stringify([
               {
                 topic: 'MockTopic',
+                subtopic: 'MockSubtopic',
                 question_text: 'What is a mock?',
                 options: ['Fake', 'Real', 'Undefined', 'Null'],
                 correct_answer: 'Fake',
@@ -64,6 +65,7 @@ describe('POST /api/upload-document', () => {
     expect(finalLine.message).toBe('Document processed successfully');
     expect(finalLine.questions.length).toBe(1);
     expect(finalLine.questions[0].topic).toBe('MockTopic');
+    expect(finalLine.questions[0].subtopic).toBe('MockSubtopic');
     expect(finalLine.questions[0].question_text).toBe('What is a mock?');
   });
 

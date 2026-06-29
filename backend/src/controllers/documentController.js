@@ -82,7 +82,7 @@ exports.uploadDocument = async (req, res, next) => {
     };
 
     // 3. Process chunks
-    const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. Do not include any markdown formatting or extra text.\n\nText:\n`;
+    const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, a subtopic (if you cannot determine a specific subtopic, use "General"), the question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. Do not include any markdown formatting or extra text.\n\nText:\n`;
     
     await asyncBatch(chunks, 3, async (chunkText) => {
       if (!chunkText.trim()) return;
@@ -98,12 +98,13 @@ exports.uploadDocument = async (req, res, next) => {
                 type: 'object',
                 properties: {
                   topic: { type: 'string' },
+                  subtopic: { type: 'string' },
                   question_text: { type: 'string' },
                   options: { type: 'array', items: { type: 'string' } },
                   correct_answer: { type: 'string' },
                   explanation: { type: 'string' },
                 },
-                required: ['topic', 'question_text', 'options', 'correct_answer', 'explanation'],
+                required: ['topic', 'subtopic', 'question_text', 'options', 'correct_answer', 'explanation'],
               },
             },
           },
@@ -114,7 +115,7 @@ exports.uploadDocument = async (req, res, next) => {
 
         if (Array.isArray(questions) && questions.length > 0) {
           const validQuestions = questions.filter(q => {
-             return q.topic && q.question_text && Array.isArray(q.options) && q.options.length >= 2 && q.options.includes(q.correct_answer) && q.explanation;
+             return q.topic && q.subtopic && q.question_text && Array.isArray(q.options) && q.options.length >= 2 && q.options.includes(q.correct_answer) && q.explanation;
           });
           
           allQuestions.push(...validQuestions);

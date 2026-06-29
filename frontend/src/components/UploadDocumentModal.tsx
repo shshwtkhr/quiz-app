@@ -1,5 +1,11 @@
 import { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 
+interface TopicData {
+  _id: string;
+  count: number;
+  subtopics: { name: string; count: number }[];
+}
+
 interface UploadDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -12,11 +18,18 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [status, setStatus] = useState<'idle' | 'uploading' | 'parsing' | 'review' | 'saving' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
-  const [existingTopics, setExistingTopics] = useState<string[]>([]);
+  const [existingTopics, setExistingTopics] = useState<TopicData[]>([]);
   const [parsedCount, setParsedCount] = useState(0);
+  
+  // Bulk selection state
+  const [selectedQuestions, setSelectedQuestions] = useState<Set<number>>(new Set());
+  const [bulkTopic, setBulkTopic] = useState('');
+  const [bulkSubtopic, setBulkSubtopic] = useState('');
+  const [isBulkNewTopic, setIsBulkNewTopic] = useState(false);
+  const [isBulkNewSubtopic, setIsBulkNewSubtopic] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Monitor status to move from uploading to parsing
   useEffect(() => {
     let timeout: NodeJS.Timeout;
     if (status === 'uploading') {
@@ -123,12 +136,11 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
 
       setParsedQuestions(finalQuestions);
 
-      // Fetch existing topics for autocomplete
       try {
         const topicsRes = await fetch('http://localhost:5000/api/topics');
         if (topicsRes.ok) {
           const topicsData = await topicsRes.json();
-          setExistingTopics(topicsData.map((t: any) => t._id));
+          setExistingTopics(topicsData);
         }
       } catch (e) {
         console.error('Failed to fetch existing topics', e);
@@ -145,6 +157,26 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     const updated = [...parsedQuestions];
     updated[index].topic = newTopic;
     setParsedQuestions(updated);
+  };
+
+  const handleSubtopicChange = (index: number, newSubtopic: string) => {
+    const updated = [...parsedQuestions];
+    updated[index].subtopic = newSubtopic;
+    setParsedQuestions(updated);
+  };
+
+  const handleBulkApply = () => {
+    const updated = [...parsedQuestions];
+    selectedQuestions.forEach(index => {
+      if (bulkTopic) updated[index].topic = bulkTopic;
+      if (bulkSubtopic) updated[index].subtopic = bulkSubtopic;
+    });
+    setParsedQuestions(updated);
+    setSelectedQuestions(new Set());
+    setBulkTopic('');
+    setBulkSubtopic('');
+    setIsBulkNewTopic(false);
+    setIsBulkNewSubtopic(false);
   };
 
   const handleSave = async () => {
@@ -180,12 +212,22 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setParsedQuestions([]);
     setExistingTopics([]);
     setParsedCount(0);
+    setSelectedQuestions(new Set());
+    setBulkTopic('');
+    setBulkSubtopic('');
   };
 
   const handleClose = () => {
     resetState();
     onClose();
   };
+
+  const getSubtopicsForTopic = (topicName: string) => {
+    const topic = existingTopics.find(t => t._id === topicName);
+    return topic ? topic.subtopics.map(s => s.name) : [];
+  };
+
+  const existingTopicNames = existingTopics.map(t => t._id);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -194,7 +236,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
         onClick={handleClose}
       />
       
-      <div className={`relative w-full ${status === 'review' ? 'max-w-xl' : 'max-w-md'} bg-surface glass-card p-6 shadow-2xl animate-slide-up transition-all duration-300 border-glass-border border-2`}>
+      <div className={`relative w-full ${status === 'review' ? 'max-w-2xl' : 'max-w-md'} bg-surface glass-card p-6 shadow-2xl animate-slide-up transition-all duration-300 border-glass-border border-2 flex flex-col max-h-[90vh]`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-text-primary">Upload Document</h2>
           <button 
@@ -209,67 +251,174 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
         </div>
 
         {status === 'review' ? (
-          <div className="flex flex-col max-h-[70vh]">
-            <h3 className="text-lg font-semibold text-text-primary mb-2">Review Topics</h3>
-            <p className="text-text-muted text-sm mb-4">
-              The AI extracted these questions. You can adjust the topic for each question before saving.
-            </p>
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-text-primary mb-1">Review Topics</h3>
+              <p className="text-text-muted text-sm flex justify-between items-center">
+                <span>Select questions to bulk assign topics and subtopics.</span>
+                <label className="flex items-center gap-2 cursor-pointer hover:text-text-primary">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedQuestions.size === parsedQuestions.length && parsedQuestions.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedQuestions(new Set(parsedQuestions.map((_, i) => i)));
+                      else setSelectedQuestions(new Set());
+                    }}
+                    className="w-4 h-4 text-primary bg-surface border-glass-border rounded focus:ring-primary"
+                  />
+                  Select All
+                </label>
+              </p>
+            </div>
+
+            {/* Bulk Action Bar */}
+            {selectedQuestions.size > 0 && (
+              <div className="p-3 mb-4 rounded-xl border border-primary/30 bg-primary/10 flex flex-wrap gap-3 items-center animate-fade-in">
+                <span className="text-primary font-medium text-sm whitespace-nowrap">{selectedQuestions.size} selected</span>
+                
+                {isBulkNewTopic ? (
+                  <div className="flex gap-2 flex-1 min-w-[150px]">
+                    <input type="text" value={bulkTopic} onChange={(e) => setBulkTopic(e.target.value)} className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm" placeholder="New topic..." />
+                    <button onClick={() => { setIsBulkNewTopic(false); setBulkTopic(''); }} className="text-xs px-2 bg-surface-light rounded">Cancel</button>
+                  </div>
+                ) : (
+                  <select
+                    value={bulkTopic}
+                    onChange={(e) => {
+                      if (e.target.value === 'NEW') setIsBulkNewTopic(true);
+                      else setBulkTopic(e.target.value);
+                    }}
+                    className="flex-1 min-w-[150px] bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none"
+                  >
+                    <option value="" className="bg-surface text-text-muted">Select Topic...</option>
+                    {existingTopicNames.map(t => <option key={t} value={t} className="bg-surface text-text-primary">{t}</option>)}
+                    <option value="NEW" className="bg-surface font-bold text-primary">+ Create New</option>
+                  </select>
+                )}
+
+                {isBulkNewSubtopic ? (
+                  <div className="flex gap-2 flex-1 min-w-[150px]">
+                    <input type="text" value={bulkSubtopic} onChange={(e) => setBulkSubtopic(e.target.value)} className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm" placeholder="New subtopic..." />
+                    <button onClick={() => { setIsBulkNewSubtopic(false); setBulkSubtopic(''); }} className="text-xs px-2 bg-surface-light rounded">Cancel</button>
+                  </div>
+                ) : (
+                  <select
+                    value={bulkSubtopic}
+                    onChange={(e) => {
+                      if (e.target.value === 'NEW') setIsBulkNewSubtopic(true);
+                      else setBulkSubtopic(e.target.value);
+                    }}
+                    className="flex-1 min-w-[150px] bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none"
+                  >
+                    <option value="" className="bg-surface text-text-muted">Select Subtopic...</option>
+                    {getSubtopicsForTopic(bulkTopic).map(s => <option key={s} value={s} className="bg-surface text-text-primary">{s}</option>)}
+                    <option value="NEW" className="bg-surface font-bold text-primary">+ Create New</option>
+                  </select>
+                )}
+                
+                <button 
+                  onClick={handleBulkApply}
+                  disabled={!bulkTopic && !bulkSubtopic}
+                  className="px-4 py-1.5 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary-dark transition disabled:opacity-50"
+                >
+                  Apply
+                </button>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
               {parsedQuestions.map((q, index) => (
-                <div key={index} className="p-4 rounded-xl border border-glass-border bg-surface-light/30">
-                  <p className="text-text-primary text-sm font-medium mb-3 line-clamp-2">{q.question_text}</p>
-                  <div className="relative">
-                    {q._isNewTopic ? (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={q.topic}
-                          onChange={(e) => handleTopicChange(index, e.target.value)}
-                          className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-primary transition-colors text-sm"
-                          placeholder="Enter new topic..."
-                          autoFocus
-                        />
-                        <button 
-                          onClick={() => {
-                             const updated = [...parsedQuestions];
-                             updated[index]._isNewTopic = false;
-                             updated[index].topic = existingTopics[0] || '';
-                             setParsedQuestions(updated);
-                          }}
-                          className="px-3 py-2 bg-surface-light border border-glass-border rounded-lg text-sm hover:bg-surface-lighter transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <select
-                        value={existingTopics.includes(q.topic) ? q.topic : (q.topic ? q.topic : 'NEW_TOPIC_SELECT')}
-                        onChange={(e) => {
-                          if (e.target.value === 'NEW_TOPIC_SELECT') {
-                             const updated = [...parsedQuestions];
-                             updated[index]._isNewTopic = true;
-                             updated[index].topic = '';
-                             setParsedQuestions(updated);
-                          } else {
-                             handleTopicChange(index, e.target.value);
-                          }
-                        }}
-                        className="w-full bg-surface-dark border border-glass-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-primary transition-colors text-sm appearance-none"
-                      >
-                        {!existingTopics.includes(q.topic) && q.topic && (
-                          <option value={q.topic}>{q.topic} (AI Suggested)</option>
+                <div key={index} className={`p-4 rounded-xl border transition-colors flex gap-4 ${selectedQuestions.has(index) ? 'border-primary/50 bg-primary/5' : 'border-glass-border bg-surface-light/30'}`}>
+                  <div className="pt-1">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedQuestions.has(index)}
+                      onChange={(e) => {
+                        const newSet = new Set(selectedQuestions);
+                        if (e.target.checked) newSet.add(index);
+                        else newSet.delete(index);
+                        setSelectedQuestions(newSet);
+                      }}
+                      className="w-4 h-4 text-primary bg-surface border-glass-border rounded focus:ring-primary cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-text-primary text-sm font-medium mb-3 line-clamp-2">{q.question_text}</p>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        {q._isNewTopic ? (
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={q.topic}
+                              onChange={(e) => handleTopicChange(index, e.target.value)}
+                              className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary focus:outline-none focus:border-primary text-sm"
+                              placeholder="New topic..."
+                            />
+                            <button onClick={() => { const updated = [...parsedQuestions]; updated[index]._isNewTopic = false; updated[index].topic = existingTopicNames[0] || ''; setParsedQuestions(updated); }} className="px-2 bg-surface-light border border-glass-border rounded-lg text-xs">Cancel</button>
+                          </div>
+                        ) : (
+                          <select
+                            value={existingTopicNames.includes(q.topic) ? q.topic : (q.topic ? q.topic : 'NEW_TOPIC_SELECT')}
+                            onChange={(e) => {
+                              if (e.target.value === 'NEW_TOPIC_SELECT') {
+                                 const updated = [...parsedQuestions];
+                                 updated[index]._isNewTopic = true;
+                                 updated[index].topic = '';
+                                 setParsedQuestions(updated);
+                              } else {
+                                 handleTopicChange(index, e.target.value);
+                              }
+                            }}
+                            className="w-full bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none cursor-pointer"
+                          >
+                            {!existingTopicNames.includes(q.topic) && q.topic && <option value={q.topic} className="bg-surface text-text-primary">{q.topic} (AI)</option>}
+                            {existingTopicNames.map((t) => <option key={t} value={t} className="bg-surface text-text-primary">{t}</option>)}
+                            <option value="NEW_TOPIC_SELECT" className="bg-surface font-bold text-primary">+ Create New Topic</option>
+                          </select>
                         )}
-                        {existingTopics.map((t) => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                        <option value="NEW_TOPIC_SELECT" className="font-bold text-primary">+ Create New Topic</option>
-                      </select>
-                    )}
+                      </div>
+                      
+                      <div className="flex-1">
+                        {q._isNewSubtopic ? (
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={q.subtopic || ''}
+                              onChange={(e) => handleSubtopicChange(index, e.target.value)}
+                              className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary focus:outline-none focus:border-primary text-sm"
+                              placeholder="New subtopic..."
+                            />
+                            <button onClick={() => { const updated = [...parsedQuestions]; updated[index]._isNewSubtopic = false; updated[index].subtopic = 'General'; setParsedQuestions(updated); }} className="px-2 bg-surface-light border border-glass-border rounded-lg text-xs">Cancel</button>
+                          </div>
+                        ) : (
+                          <select
+                            value={getSubtopicsForTopic(q.topic).includes(q.subtopic) ? q.subtopic : (q.subtopic ? q.subtopic : 'NEW_SUBTOPIC_SELECT')}
+                            onChange={(e) => {
+                              if (e.target.value === 'NEW_SUBTOPIC_SELECT') {
+                                 const updated = [...parsedQuestions];
+                                 updated[index]._isNewSubtopic = true;
+                                 updated[index].subtopic = '';
+                                 setParsedQuestions(updated);
+                              } else {
+                                 handleSubtopicChange(index, e.target.value);
+                              }
+                            }}
+                            className="w-full bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none cursor-pointer"
+                          >
+                            {!getSubtopicsForTopic(q.topic).includes(q.subtopic) && q.subtopic && <option value={q.subtopic} className="bg-surface text-text-primary">{q.subtopic} (AI)</option>}
+                            {getSubtopicsForTopic(q.topic).map((s) => <option key={s} value={s} className="bg-surface text-text-primary">{s}</option>)}
+                            <option value="NEW_SUBTOPIC_SELECT" className="bg-surface font-bold text-primary">+ Create New Subtopic</option>
+                          </select>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-6 pt-4 border-t border-glass-border flex gap-3">
+            
+            <div className="mt-6 pt-4 border-t border-glass-border flex gap-3 shrink-0">
               <button
                 onClick={() => setStatus('idle')}
                 className="flex-1 py-2.5 rounded-lg border border-glass-border text-text-primary hover:bg-surface-light transition-colors font-medium"
@@ -376,7 +525,6 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                 </h3>
                 <p className="text-text-muted mt-2">This might take a few moments for large documents</p>
                 
-                {/* Progress bar simulation */}
                 <div className="w-full h-2 bg-surface-light rounded-full mt-6 overflow-hidden">
                   <div 
                     className="h-full bg-primary transition-all duration-[3000ms] ease-out"
@@ -391,3 +539,4 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     </div>
   );
 }
+

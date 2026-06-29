@@ -6,6 +6,7 @@ const Question = require('../src/models/Question');
 const sampleQuestions = [
   {
     topic: 'Physics',
+    subtopic: 'Mechanics',
     question_text: 'What is the unit of force?',
     options: ['Newton', 'Joule', 'Watt', 'Pascal'],
     correct_answer: 'Newton',
@@ -13,6 +14,7 @@ const sampleQuestions = [
   },
   {
     topic: 'Physics',
+    subtopic: 'Light',
     question_text: 'What is the speed of light?',
     options: ['3×10⁸ m/s', '3×10⁶ m/s', '3×10¹⁰ m/s', '3×10⁴ m/s'],
     correct_answer: '3×10⁸ m/s',
@@ -20,6 +22,7 @@ const sampleQuestions = [
   },
   {
     topic: 'Chemistry',
+    subtopic: 'Inorganic',
     question_text: 'What is the chemical symbol for water?',
     options: ['H2O', 'CO2', 'NaCl', 'O2'],
     correct_answer: 'H2O',
@@ -27,6 +30,7 @@ const sampleQuestions = [
   },
   {
     topic: 'Chemistry',
+    subtopic: 'Acids',
     question_text: 'What is the pH of pure water?',
     options: ['7', '0', '14', '1'],
     correct_answer: '7',
@@ -34,6 +38,7 @@ const sampleQuestions = [
   },
   {
     topic: 'Math',
+    subtopic: 'Arithmetic',
     question_text: 'What is 2 + 2?',
     options: ['3', '4', '5', '6'],
     correct_answer: '4',

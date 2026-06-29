@@ -8,6 +8,12 @@ const questionSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    subtopic: {
+      type: String,
+      trim: true,
+      default: 'General',
+      index: true,
+    },
     question_text: {
       type: String,
       required: [true, 'Question text is required'],
@@ -35,7 +41,7 @@ const questionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound unique index to prevent duplicate questions within a topic
-questionSchema.index({ topic: 1, question_text: 1 }, { unique: true });
+// Compound unique index to prevent duplicate questions within a topic and subtopic
+questionSchema.index({ topic: 1, subtopic: 1, question_text: 1 }, { unique: true });
 
 module.exports = mongoose.model('Question', questionSchema);
