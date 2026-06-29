@@ -2,6 +2,7 @@ const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const { GoogleGenAI } = require('@google/genai');
 const Question = require('../models/Question');
+const Config = require('../models/Config');
 
 
 exports.uploadDocument = async (req, res, next) => {
@@ -10,11 +11,15 @@ exports.uploadDocument = async (req, res, next) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY is missing in server configuration.' });
+    // Fetch Gemini API key from the database configuration collection
+    const apiKeyConfig = await Config.findOne({ key: 'GEMINI_API_KEY' });
+    const geminiApiKey = apiKeyConfig ? apiKeyConfig.value : process.env.GEMINI_API_KEY;
+
+    if (!geminiApiKey) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY is missing in database configuration.' });
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
     const { buffer, originalname, mimetype } = req.file;
     let extractedText = '';
