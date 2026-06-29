@@ -134,11 +134,15 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
         console.log("Modifying a topic...");
         await new Promise(r => setTimeout(r, 1000));
         
-        const inputs = await page.$$('input[type="text"]');
-        if (inputs.length > 0) {
-           await inputs[0].click({ clickCount: 3 });
-           await inputs[0].type('Automation');
+        const selects = await page.$$('select');
+        if (selects.length > 0) {
+           await selects[0].select('NEW_TOPIC_SELECT');
            await new Promise(r => setTimeout(r, 500));
+           const inputs = await page.$$('input[type="text"]');
+           if (inputs.length > 0) {
+              await inputs[0].type('Automation');
+              await new Promise(r => setTimeout(r, 500));
+           }
         }
 
         console.log("Saving questions...");

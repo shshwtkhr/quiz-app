@@ -153,11 +153,11 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
       <div 
-        className="absolute inset-0 backdrop-blur-xl bg-surface-dark/80"
+        className="absolute inset-0 backdrop-blur-xl bg-black/80"
         onClick={handleClose}
       />
       
-      <div className={`relative w-full ${status === 'review' ? 'max-w-xl' : 'max-w-md'} glass-card p-6 shadow-2xl animate-slide-up transition-all duration-300`}>
+      <div className={`relative w-full ${status === 'review' ? 'max-w-xl' : 'max-w-md'} bg-surface glass-card p-6 shadow-2xl animate-slide-up transition-all duration-300 border-glass-border border-2`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-text-primary">Upload Document</h2>
           <button 
@@ -182,19 +182,52 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                 <div key={index} className="p-4 rounded-xl border border-glass-border bg-surface-light/30">
                   <p className="text-text-primary text-sm font-medium mb-3 line-clamp-2">{q.question_text}</p>
                   <div className="relative">
-                    <input
-                      type="text"
-                      value={q.topic}
-                      onChange={(e) => handleTopicChange(index, e.target.value)}
-                      list={`topics-list-${index}`}
-                      className="w-full bg-surface-dark border border-glass-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-primary transition-colors text-sm"
-                      placeholder="Enter or select topic..."
-                    />
-                    <datalist id={`topics-list-${index}`}>
-                      {existingTopics.map((t) => (
-                        <option key={t} value={t} />
-                      ))}
-                    </datalist>
+                    {q._isNewTopic ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={q.topic}
+                          onChange={(e) => handleTopicChange(index, e.target.value)}
+                          className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-primary transition-colors text-sm"
+                          placeholder="Enter new topic..."
+                          autoFocus
+                        />
+                        <button 
+                          onClick={() => {
+                             const updated = [...parsedQuestions];
+                             updated[index]._isNewTopic = false;
+                             updated[index].topic = existingTopics[0] || '';
+                             setParsedQuestions(updated);
+                          }}
+                          className="px-3 py-2 bg-surface-light border border-glass-border rounded-lg text-sm hover:bg-surface-lighter transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        value={existingTopics.includes(q.topic) ? q.topic : (q.topic ? q.topic : 'NEW_TOPIC_SELECT')}
+                        onChange={(e) => {
+                          if (e.target.value === 'NEW_TOPIC_SELECT') {
+                             const updated = [...parsedQuestions];
+                             updated[index]._isNewTopic = true;
+                             updated[index].topic = '';
+                             setParsedQuestions(updated);
+                          } else {
+                             handleTopicChange(index, e.target.value);
+                          }
+                        }}
+                        className="w-full bg-surface-dark border border-glass-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-primary transition-colors text-sm appearance-none"
+                      >
+                        {!existingTopics.includes(q.topic) && q.topic && (
+                          <option value={q.topic}>{q.topic} (AI Suggested)</option>
+                        )}
+                        {existingTopics.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                        <option value="NEW_TOPIC_SELECT" className="font-bold text-primary">+ Create New Topic</option>
+                      </select>
+                    )}
                   </div>
                 </div>
               ))}
