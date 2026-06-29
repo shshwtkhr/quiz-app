@@ -13,6 +13,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [errorMessage, setErrorMessage] = useState('');
   const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
   const [existingTopics, setExistingTopics] = useState<string[]>([]);
+  const [parsedCount, setParsedCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Monitor status to move from uploading to parsing
@@ -84,8 +85,43 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
         throw new Error(errorData?.error || 'Upload failed');
       }
 
-      const data = await response.json();
-      setParsedQuestions(data.questions || []);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Response stream not available');
+      
+      const decoder = new TextDecoder();
+      let partial = '';
+      let finalQuestions: any[] = [];
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        partial += decoder.decode(value, { stream: true });
+        
+        const lines = partial.split('\n');
+        partial = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.trim()) {
+             try {
+                const data = JSON.parse(line);
+                if (data.type === 'error') {
+                   throw new Error(data.error);
+                } else if (data.type === 'progress') {
+                   setParsedCount(data.parsedSoFar);
+                } else if (data.type === 'complete') {
+                   finalQuestions = data.questions || [];
+                }
+             } catch(err: any) {
+                if (line.includes('"type":"error"')) {
+                   const errorMatch = line.match(/"error":"([^"]+)"/);
+                   if (errorMatch) throw new Error(errorMatch[1]);
+                }
+             }
+          }
+        }
+      }
+
+      setParsedQuestions(finalQuestions);
 
       // Fetch existing topics for autocomplete
       try {
@@ -143,6 +179,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setErrorMessage('');
     setParsedQuestions([]);
     setExistingTopics([]);
+    setParsedCount(0);
   };
 
   const handleClose = () => {
@@ -335,9 +372,9 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                   </div>
                 </div>
                 <h3 className="text-xl font-semibold text-text-primary">
-                  {status === 'uploading' ? 'Uploading Document...' : status === 'saving' ? 'Saving Questions...' : 'AI is parsing questions...'}
+                  {status === 'uploading' ? 'Uploading Document...' : status === 'saving' ? 'Saving Questions...' : `AI is parsing questions... (Found: ${parsedCount})`}
                 </h3>
-                <p className="text-text-muted mt-2">This might take a few moments</p>
+                <p className="text-text-muted mt-2">This might take a few moments for large documents</p>
                 
                 {/* Progress bar simulation */}
                 <div className="w-full h-2 bg-surface-light rounded-full mt-6 overflow-hidden">

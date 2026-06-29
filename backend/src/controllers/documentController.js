@@ -44,63 +44,111 @@ exports.uploadDocument = async (req, res, next) => {
       return res.status(400).json({ error: 'Failed to extract text from the document or document is empty.' });
     }
 
-    // Call Gemini
-    const prompt = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. Do not include any markdown formatting or extra text.\n\nText:\n${extractedText}`;
+    // Set headers for streaming response (NDJSON)
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Transfer-Encoding', 'chunked');
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              topic: { type: 'string' },
-              question_text: { type: 'string' },
-              options: { type: 'array', items: { type: 'string' } },
-              correct_answer: { type: 'string' },
-              explanation: { type: 'string' },
+    // 1. Chunk the text
+    const maxChunkSize = 15000;
+    const chunks = [];
+    let currentChunk = '';
+    // Split by paragraphs to avoid cutting mid-sentence
+    const paragraphs = extractedText.split(/\n\s*\n/);
+    
+    for (const p of paragraphs) {
+      if (currentChunk.length + p.length > maxChunkSize && currentChunk.length > 0) {
+        chunks.push(currentChunk);
+        currentChunk = '';
+      }
+      currentChunk += p + '\n\n';
+    }
+    if (currentChunk.trim().length > 0) {
+      chunks.push(currentChunk);
+    }
+
+    // 2. Concurrency Limiter Helper
+    let totalParsed = 0;
+    let allQuestions = [];
+
+    const asyncBatch = async (items, limit, asyncCallback) => {
+      let index = 0;
+      const workers = Array.from({ length: limit }).map(async () => {
+        while (index < items.length) {
+          const currentIndex = index++;
+          await asyncCallback(items[currentIndex], currentIndex);
+        }
+      });
+      await Promise.all(workers);
+    };
+
+    // 3. Process chunks
+    const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. Do not include any markdown formatting or extra text.\n\nText:\n`;
+    
+    await asyncBatch(chunks, 3, async (chunkText) => {
+      if (!chunkText.trim()) return;
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: promptBase + chunkText,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  topic: { type: 'string' },
+                  question_text: { type: 'string' },
+                  options: { type: 'array', items: { type: 'string' } },
+                  correct_answer: { type: 'string' },
+                  explanation: { type: 'string' },
+                },
+                required: ['topic', 'question_text', 'options', 'correct_answer', 'explanation'],
+              },
             },
-            required: ['topic', 'question_text', 'options', 'correct_answer', 'explanation'],
           },
-        },
-      },
+        });
+
+        const textOutput = response.text;
+        const questions = JSON.parse(textOutput);
+
+        if (Array.isArray(questions) && questions.length > 0) {
+          const validQuestions = questions.filter(q => {
+             return q.topic && q.question_text && Array.isArray(q.options) && q.options.length >= 2 && q.options.includes(q.correct_answer) && q.explanation;
+          });
+          
+          allQuestions.push(...validQuestions);
+          totalParsed += validQuestions.length;
+          
+          // Stream progress event
+          res.write(JSON.stringify({ type: 'progress', parsedSoFar: totalParsed }) + '\n');
+        }
+      } catch (err) {
+        console.error('Error parsing chunk:', err);
+        // We gracefully ignore the chunk failure to salvage the rest of the document
+      }
     });
 
-    const textOutput = response.text;
-    let questions;
-    try {
-      questions = JSON.parse(textOutput);
-    } catch (e) {
-      return res.status(500).json({ error: 'Failed to parse Gemini response as JSON.' });
+    if (allQuestions.length === 0) {
+      res.write(JSON.stringify({ type: 'error', error: 'Failed to extract any valid questions from the document.' }) + '\n');
+      return res.end();
     }
 
-    // Validate the questions
-    if (!Array.isArray(questions) || questions.length === 0) {
-      return res.status(400).json({ error: 'Gemini did not return a valid array of questions.' });
-    }
-
-    for (let i = 0; i < questions.length; i++) {
-      const q = questions[i];
-      if (!q.topic || !q.question_text || !q.options || !q.correct_answer || !q.explanation) {
-         return res.status(400).json({ error: `Question at index ${i} is missing required fields.` });
-      }
-      if (!Array.isArray(q.options) || q.options.length < 2) {
-        return res.status(400).json({ error: `Question at index ${i} must have at least 2 options.` });
-      }
-      if (!q.options.includes(q.correct_answer)) {
-        return res.status(400).json({ error: `Question at index ${i} has a correct_answer that is not in the options.` });
-      }
-    }
-
-    res.status(200).json({
+    res.write(JSON.stringify({
+      type: 'complete',
       message: 'Document processed successfully',
-      questions: questions,
-    });
+      questions: allQuestions,
+    }) + '\n');
+    
+    res.end();
 
   } catch (error) {
-    next(error);
+    if (!res.headersSent) {
+      next(error);
+    } else {
+      console.error('Streaming error:', error);
+      res.write(JSON.stringify({ type: 'error', error: 'An unexpected error occurred during processing.' }) + '\n');
+      res.end();
+    }
   }
 };

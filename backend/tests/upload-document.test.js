@@ -59,10 +59,12 @@ describe('POST /api/upload-document', () => {
       .attach('file', Buffer.from('Here is some quiz text'), 'quiz.txt');
       
     expect(res.status).toBe(200);
-    expect(res.body.message).toBe('Document processed successfully');
-    expect(res.body.questions.length).toBe(1);
-    expect(res.body.questions[0].topic).toBe('MockTopic');
-    expect(res.body.questions[0].question_text).toBe('What is a mock?');
+    const lines = res.text.trim().split('\n');
+    const finalLine = JSON.parse(lines[lines.length - 1]);
+    expect(finalLine.message).toBe('Document processed successfully');
+    expect(finalLine.questions.length).toBe(1);
+    expect(finalLine.questions[0].topic).toBe('MockTopic');
+    expect(finalLine.questions[0].question_text).toBe('What is a mock?');
   });
 
   it('should process a PDF file and return parsed questions', async () => {
@@ -71,7 +73,9 @@ describe('POST /api/upload-document', () => {
       .attach('file', Buffer.from('fake pdf data'), { filename: 'quiz.pdf', contentType: 'application/pdf' });
       
     expect(res.status).toBe(200);
-    expect(res.body.questions.length).toBe(1);
+    const lines = res.text.trim().split('\n');
+    const finalLine = JSON.parse(lines[lines.length - 1]);
+    expect(finalLine.questions.length).toBe(1);
   });
 
   it('should process a DOCX file and return parsed questions', async () => {
@@ -80,7 +84,9 @@ describe('POST /api/upload-document', () => {
       .attach('file', Buffer.from('fake docx data'), { filename: 'quiz.docx', contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       
     expect(res.status).toBe(200);
-    expect(res.body.questions.length).toBe(1);
+    const lines = res.text.trim().split('\n');
+    const finalLine = JSON.parse(lines[lines.length - 1]);
+    expect(finalLine.questions.length).toBe(1);
   });
 
   it('should return 400 for unsupported file types', async () => {
