@@ -47,6 +47,12 @@ exports.uploadDocument = async (req, res, next) => {
     // Set headers for streaming response (NDJSON)
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Transfer-Encoding', 'chunked');
+    res.flushHeaders();
+    
+    // Keep connection alive
+    const keepAlive = setInterval(() => {
+      res.write(JSON.stringify({ type: 'ping' }) + '\n');
+    }, 15000);
 
     // 1. Chunk the text
     const maxChunkSize = 15000;
@@ -115,7 +121,13 @@ exports.uploadDocument = async (req, res, next) => {
 
         if (Array.isArray(questions) && questions.length > 0) {
           const validQuestions = questions.filter(q => {
-             return q.topic && q.subtopic && q.question_text && Array.isArray(q.options) && q.options.length >= 2 && q.options.includes(q.correct_answer) && q.explanation;
+             const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
+             const hasCorrect = hasOptions && q.options.some(opt => opt.trim() === (q.correct_answer || '').trim());
+             const isValid = q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
+             if (!isValid) {
+                console.error("Filtered out invalid question:", q);
+             }
+             return isValid;
           });
           
           allQuestions.push(...validQuestions);
@@ -131,10 +143,12 @@ exports.uploadDocument = async (req, res, next) => {
     });
 
     if (allQuestions.length === 0) {
+      clearInterval(keepAlive);
       res.write(JSON.stringify({ type: 'error', error: 'Failed to extract any valid questions from the document.' }) + '\n');
       return res.end();
     }
 
+    clearInterval(keepAlive);
     res.write(JSON.stringify({
       type: 'complete',
       message: 'Document processed successfully',
@@ -144,6 +158,7 @@ exports.uploadDocument = async (req, res, next) => {
     res.end();
 
   } catch (error) {
+    if (typeof keepAlive !== 'undefined') clearInterval(keepAlive);
     if (!res.headersSent) {
       next(error);
     } else {
