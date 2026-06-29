@@ -53,39 +53,34 @@ describe('POST /api/upload-document', () => {
     expect(res.body.error).toMatch(/GEMINI_API_KEY is missing/);
   });
 
-  it('should process a TXT file and upload parsed questions', async () => {
+  it('should process a TXT file and return parsed questions', async () => {
     const res = await request(app)
       .post('/api/upload-document')
       .attach('file', Buffer.from('Here is some quiz text'), 'quiz.txt');
       
-    expect(res.status).toBe(201);
-    expect(res.body.message).toBe('Document processed and questions uploaded successfully');
-    expect(res.body.extractedQuestions).toBe(1);
-    expect(res.body.upsertedCount).toBe(1);
-
-    // Verify DB
-    const questions = await Question.find({});
-    expect(questions.length).toBe(1);
-    expect(questions[0].topic).toBe('MockTopic');
-    expect(questions[0].question_text).toBe('What is a mock?');
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Document processed successfully');
+    expect(res.body.questions.length).toBe(1);
+    expect(res.body.questions[0].topic).toBe('MockTopic');
+    expect(res.body.questions[0].question_text).toBe('What is a mock?');
   });
 
-  it('should process a PDF file and upload parsed questions', async () => {
+  it('should process a PDF file and return parsed questions', async () => {
     const res = await request(app)
       .post('/api/upload-document')
       .attach('file', Buffer.from('fake pdf data'), { filename: 'quiz.pdf', contentType: 'application/pdf' });
       
-    expect(res.status).toBe(201);
-    expect(res.body.extractedQuestions).toBe(1);
+    expect(res.status).toBe(200);
+    expect(res.body.questions.length).toBe(1);
   });
 
-  it('should process a DOCX file and upload parsed questions', async () => {
+  it('should process a DOCX file and return parsed questions', async () => {
     const res = await request(app)
       .post('/api/upload-document')
       .attach('file', Buffer.from('fake docx data'), { filename: 'quiz.docx', contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       
-    expect(res.status).toBe(201);
-    expect(res.body.extractedQuestions).toBe(1);
+    expect(res.status).toBe(200);
+    expect(res.body.questions.length).toBe(1);
   });
 
   it('should return 400 for unsupported file types', async () => {

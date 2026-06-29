@@ -9,8 +9,10 @@ interface UploadDocumentModalProps {
 export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: UploadDocumentModalProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'parsing' | 'review' | 'saving' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
+  const [existingTopics, setExistingTopics] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Monitor status to move from uploading to parsing
@@ -82,12 +84,52 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
         throw new Error(errorData?.error || 'Upload failed');
       }
 
+      const data = await response.json();
+      setParsedQuestions(data.questions || []);
+
+      // Fetch existing topics for autocomplete
+      try {
+        const topicsRes = await fetch('http://localhost:5000/api/topics');
+        if (topicsRes.ok) {
+          const topicsData = await topicsRes.json();
+          setExistingTopics(topicsData.map((t: any) => t._id));
+        }
+      } catch (e) {
+        console.error('Failed to fetch existing topics', e);
+      }
+
+      setStatus('review');
+    } catch (error: any) {
+      setStatus('error');
+      setErrorMessage(error.message || 'An error occurred during upload.');
+    }
+  };
+
+  const handleTopicChange = (index: number, newTopic: string) => {
+    const updated = [...parsedQuestions];
+    updated[index].topic = newTopic;
+    setParsedQuestions(updated);
+  };
+
+  const handleSave = async () => {
+    setStatus('saving');
+    try {
+      const response = await fetch('http://localhost:5000/api/upload-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsedQuestions),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'Save failed');
+      }
+
       setStatus('success');
       setTimeout(() => {
         onSuccess();
         onClose();
-        setFile(null);
-        setStatus('idle');
+        resetState();
       }, 1500);
     } catch (error: any) {
       setStatus('error');
@@ -99,6 +141,8 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setFile(null);
     setStatus('idle');
     setErrorMessage('');
+    setParsedQuestions([]);
+    setExistingTopics([]);
   };
 
   const handleClose = () => {
@@ -113,7 +157,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
         onClick={handleClose}
       />
       
-      <div className="relative w-full max-w-md glass-card p-6 shadow-2xl animate-slide-up">
+      <div className={`relative w-full ${status === 'review' ? 'max-w-xl' : 'max-w-md'} glass-card p-6 shadow-2xl animate-slide-up transition-all duration-300`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-text-primary">Upload Document</h2>
           <button 
@@ -127,7 +171,50 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
           </button>
         </div>
 
-        {status === 'idle' || status === 'error' ? (
+        {status === 'review' ? (
+          <div className="flex flex-col max-h-[70vh]">
+            <h3 className="text-lg font-semibold text-text-primary mb-2">Review Topics</h3>
+            <p className="text-text-muted text-sm mb-4">
+              The AI extracted these questions. You can adjust the topic for each question before saving.
+            </p>
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+              {parsedQuestions.map((q, index) => (
+                <div key={index} className="p-4 rounded-xl border border-glass-border bg-surface-light/30">
+                  <p className="text-text-primary text-sm font-medium mb-3 line-clamp-2">{q.question_text}</p>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={q.topic}
+                      onChange={(e) => handleTopicChange(index, e.target.value)}
+                      list={`topics-list-${index}`}
+                      className="w-full bg-surface-dark border border-glass-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-primary transition-colors text-sm"
+                      placeholder="Enter or select topic..."
+                    />
+                    <datalist id={`topics-list-${index}`}>
+                      {existingTopics.map((t) => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 pt-4 border-t border-glass-border flex gap-3">
+              <button
+                onClick={() => setStatus('idle')}
+                className="flex-1 py-2.5 rounded-lg border border-glass-border text-text-primary hover:bg-surface-light transition-colors font-medium"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex-1 btn-primary py-2.5 font-medium"
+              >
+                Save Questions
+              </button>
+            </div>
+          </div>
+        ) : status === 'idle' || status === 'error' ? (
           <>
             <div
               className={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${
@@ -215,7 +302,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                   </div>
                 </div>
                 <h3 className="text-xl font-semibold text-text-primary">
-                  {status === 'uploading' ? 'Uploading Document...' : 'AI is parsing questions...'}
+                  {status === 'uploading' ? 'Uploading Document...' : status === 'saving' ? 'Saving Questions...' : 'AI is parsing questions...'}
                 </h3>
                 <p className="text-text-muted mt-2">This might take a few moments</p>
                 
@@ -223,7 +310,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                 <div className="w-full h-2 bg-surface-light rounded-full mt-6 overflow-hidden">
                   <div 
                     className="h-full bg-primary transition-all duration-[3000ms] ease-out"
-                    style={{ width: status === 'uploading' ? '40%' : '90%' }}
+                    style={{ width: status === 'uploading' ? '40%' : status === 'saving' ? '90%' : '70%' }}
                   />
                 </div>
               </div>

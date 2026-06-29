@@ -122,14 +122,47 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
         
         // Wait for upload success and modal to close
         // We can wait for the modal container to disappear
-        console.log("Waiting for AI parsing to finish...");
+        console.log("Waiting for AI parsing to finish and Review screen to appear...");
+        try {
+            await page.waitForFunction(() => {
+                return Array.from(document.querySelectorAll('h3')).some(h => h.textContent === 'Review Topics');
+            }, { timeout: 30000 });
+        } catch(e) {
+            console.log("Review screen didn't appear in time.");
+        }
+
+        console.log("Modifying a topic...");
+        await new Promise(r => setTimeout(r, 1000));
+        
+        const inputs = await page.$$('input[type="text"]');
+        if (inputs.length > 0) {
+           await inputs[0].click({ clickCount: 3 });
+           await inputs[0].type('Automation');
+           await new Promise(r => setTimeout(r, 500));
+        }
+
+        console.log("Saving questions...");
+        const saveBtns = await page.$$('button');
+        let saveBtn = null;
+        for (const b of saveBtns) {
+          const text = await page.evaluate(el => el.textContent, b);
+          if (text && text.trim() === 'Save Questions') {
+             saveBtn = b;
+             break;
+          }
+        }
+        if (saveBtn) {
+            await slowClick(page, saveBtn);
+        }
+
+        // NOW wait for modal to close
         try {
             await page.waitForFunction(() => {
                 // The modal has an h2 with "Upload Document"
                 return !Array.from(document.querySelectorAll('h2')).some(h => h.textContent === 'Upload Document');
-            }, { timeout: 30000 });
+            }, { timeout: 10000 });
         } catch(e) {
-            console.log("Modal didn't close in time.");
+            console.log("Modal didn't close after saving.");
         }
         
         // Wait for the new topic "Automation" to appear in the topics list to avoid stale elements

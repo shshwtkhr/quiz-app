@@ -95,22 +95,9 @@ exports.uploadDocument = async (req, res, next) => {
       }
     }
 
-    // Upsert questions
-    const operations = questions.map((q) => ({
-      updateOne: {
-        filter: { topic: q.topic, question_text: q.question_text },
-        update: { $set: q },
-        upsert: true,
-      },
-    }));
-
-    const result = await Question.bulkWrite(operations);
-
-    res.status(201).json({
-      message: 'Document processed and questions uploaded successfully',
-      extractedQuestions: questions.length,
-      upsertedCount: result.upsertedCount,
-      modifiedCount: result.modifiedCount,
+    res.status(200).json({
+      message: 'Document processed successfully',
+      questions: questions,
     });
 
   } catch (error) {
