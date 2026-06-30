@@ -1,5 +1,7 @@
 # QuizMaster
 
+Watch the automated **[AI Document Upload & Quiz E2E Demo](e2e-test/quiz_app_demo.mp4)**.
+
 A modern, dynamic, and premium Quiz Application built with Next.js and Node.js.
 
 ## Tech Stack

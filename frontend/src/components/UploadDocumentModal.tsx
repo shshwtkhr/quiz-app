@@ -28,7 +28,19 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [isBulkNewTopic, setIsBulkNewTopic] = useState(false);
   const [isBulkNewSubtopic, setIsBulkNewSubtopic] = useState(false);
   
+  const [isDragSelecting, setIsDragSelecting] = useState(false);
+  const [dragSelectMode, setDragSelectMode] = useState<'add' | 'remove' | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      setIsDragSelecting(false);
+      setDragSelectMode(null);
+    };
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
 
   useEffect(() => {
     let timeout: NodeJS.Timeout;
@@ -179,6 +191,12 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setIsBulkNewSubtopic(false);
   };
 
+  const handleDeleteSelected = () => {
+    const updated = parsedQuestions.filter((_, i) => !selectedQuestions.has(i));
+    setParsedQuestions(updated);
+    setSelectedQuestions(new Set());
+  };
+
   const handleSave = async () => {
     setStatus('saving');
     try {
@@ -323,23 +341,44 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                 >
                   Apply
                 </button>
+                <button 
+                  onClick={handleDeleteSelected}
+                  className="px-4 py-1.5 bg-red-500 text-white font-medium rounded-lg text-sm hover:bg-red-600 transition ml-auto"
+                >
+                  Delete Selected
+                </button>
               </div>
             )}
 
             <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
               {parsedQuestions.map((q, index) => (
                 <div key={index} className={`p-4 rounded-xl border transition-colors flex gap-4 ${selectedQuestions.has(index) ? 'border-primary/50 bg-primary/5' : 'border-glass-border bg-surface-light/30'}`}>
-                  <div className="pt-1">
+                  <div 
+                    className="pt-1 pr-2 pb-2 pl-1 cursor-pointer flex items-start"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setIsDragSelecting(true);
+                      const mode = selectedQuestions.has(index) ? 'remove' : 'add';
+                      setDragSelectMode(mode);
+                      const newSet = new Set(selectedQuestions);
+                      if (mode === 'add') newSet.add(index);
+                      else newSet.delete(index);
+                      setSelectedQuestions(newSet);
+                    }}
+                    onMouseEnter={() => {
+                      if (isDragSelecting && dragSelectMode) {
+                        const newSet = new Set(selectedQuestions);
+                        if (dragSelectMode === 'add') newSet.add(index);
+                        else newSet.delete(index);
+                        setSelectedQuestions(newSet);
+                      }
+                    }}
+                  >
                     <input 
                       type="checkbox" 
                       checked={selectedQuestions.has(index)}
-                      onChange={(e) => {
-                        const newSet = new Set(selectedQuestions);
-                        if (e.target.checked) newSet.add(index);
-                        else newSet.delete(index);
-                        setSelectedQuestions(newSet);
-                      }}
-                      className="w-4 h-4 text-primary bg-surface border-glass-border rounded focus:ring-primary cursor-pointer"
+                      readOnly
+                      className="w-4 h-4 text-primary bg-surface border-glass-border rounded focus:ring-primary cursor-pointer pointer-events-none"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
