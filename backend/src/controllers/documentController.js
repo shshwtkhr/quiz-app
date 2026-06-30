@@ -5,6 +5,68 @@ const { GoogleGenAI } = require('@google/genai');
 const Question = require('../models/Question');
 const Config = require('../models/Config');
 
+let cachedModels = null;
+let lastModelFetch = 0;
+
+async function getAvailableModels(ai) {
+  if (cachedModels && Date.now() - lastModelFetch < 1000 * 60 * 60) {
+    return cachedModels;
+  }
+  
+  try {
+    const response = await ai.models.list();
+    const models = [];
+    for await (const m of response) {
+      if (!m.name) continue;
+      const name = m.name.replace('models/', '');
+      
+      // Filter out media, embeddings, and highly specialized models
+      if (
+        name.includes('embedding') || 
+        name.includes('imagen') || 
+        name.includes('veo') || 
+        name.includes('tts') ||
+        name.includes('audio') ||
+        name.includes('aqa') ||
+        name.includes('research') ||
+        name.includes('antigravity') ||
+        name.includes('robotics') ||
+        name.includes('computer-use')
+      ) {
+        continue;
+      }
+      
+      // Keep only Gemini/Gemma generative text models
+      if (name.includes('gemini') || name.includes('gemma')) {
+        models.push(name);
+      }
+    }
+    
+    // Sort logic to prefer Pro > Flash > Lite > others, and prefer stable over preview
+    const getScore = (name) => {
+      let score = 0;
+      if (name.includes('pro')) score += 100;
+      else if (name.includes('flash')) score += 50;
+      
+      if (!name.includes('preview') && !name.includes('exp')) score += 20; // Prefer stable
+      if (name.includes('lite') || name.includes('8b')) score -= 10;
+      return score;
+    };
+    
+    models.sort((a, b) => getScore(b) - getScore(a));
+    
+    if (models.length > 0) {
+      cachedModels = models;
+      lastModelFetch = Date.now();
+      return models;
+    }
+  } catch (err) {
+    console.error("Failed to list models, using hardcoded fallback", err);
+  }
+  
+  // Hardcoded ultimate fallback if API fails
+  return ['gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+}
 
 exports.uploadDocument = async (req, res, next) => {
   try {
@@ -121,53 +183,76 @@ exports.uploadDocument = async (req, res, next) => {
       
       const contentsPayload = chunk.inlineData ? [promptBase, chunk] : promptBase + chunk;
       
-      try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: contentsPayload,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  topic: { type: 'string' },
-                  subtopic: { type: 'string' },
-                  question_text: { type: 'string' },
-                  options: { type: 'array', items: { type: 'string' } },
-                  correct_answer: { type: 'string' },
-                  explanation: { type: 'string' },
+      const fallbackModels = await getAvailableModels(ai);
+      let chunkSuccess = false;
+      let lastError = null;
+
+      for (const modelName of fallbackModels) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: contentsPayload,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    topic: { type: 'string' },
+                    subtopic: { type: 'string' },
+                    question_text: { type: 'string' },
+                    options: { type: 'array', items: { type: 'string' } },
+                    correct_answer: { type: 'string' },
+                    explanation: { type: 'string' },
+                  },
+                  required: ['topic', 'subtopic', 'question_text', 'options', 'correct_answer', 'explanation'],
                 },
-                required: ['topic', 'subtopic', 'question_text', 'options', 'correct_answer', 'explanation'],
               },
             },
-          },
-        });
-
-        const textOutput = response.text;
-        const questions = JSON.parse(textOutput);
-
-        if (Array.isArray(questions) && questions.length > 0) {
-          const validQuestions = questions.filter(q => {
-             const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
-             const hasCorrect = hasOptions && q.options.some(opt => opt.trim() === (q.correct_answer || '').trim());
-             const isValid = q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
-             if (!isValid) {
-                console.error("Filtered out invalid question:", q);
-             }
-             return isValid;
           });
+
+          const textOutput = response.text;
+          const questions = JSON.parse(textOutput);
+
+          if (Array.isArray(questions) && questions.length > 0) {
+            const validQuestions = questions.filter(q => {
+               const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
+               const hasCorrect = hasOptions && q.options.some(opt => opt.trim() === (q.correct_answer || '').trim());
+               const isValid = q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
+               if (!isValid) {
+                  console.error("Filtered out invalid question:", q);
+               }
+               return isValid;
+            });
+            
+            allQuestions.push(...validQuestions);
+            totalParsed += validQuestions.length;
+            
+            // Stream progress event
+            res.write(JSON.stringify({ type: 'progress', parsedSoFar: totalParsed }) + '\n');
+          }
           
-          allQuestions.push(...validQuestions);
-          totalParsed += validQuestions.length;
+          chunkSuccess = true;
+          break; // Success, stop trying fallback models
+        } catch (err) {
+          lastError = err;
+          // If rate limit (429), overloaded (503), or not found (404), try next model
+          if (err.status === 429 || err.status === 503 || err.status === 404 || (err.message && (err.message.includes('429') || err.message.includes('503') || err.message.includes('404') || err.message.includes('quota') || err.message.toLowerCase().includes('not found') || err.message.includes('NOT_FOUND')))) {
+             console.warn(`Model ${modelName} hit rate limit or is unavailable, trying next model...`);
+             continue;
+          }
           
-          // Stream progress event
-          res.write(JSON.stringify({ type: 'progress', parsedSoFar: totalParsed }) + '\n');
+          // Other errors (e.g. malformed JSON, prompt issues) are ignored for this chunk gracefully
+          console.error(`Error parsing chunk with ${modelName}:`, err);
+          chunkSuccess = true; // Mark as "handled" so we don't throw outer rate limit error
+          break;
         }
-      } catch (err) {
-        console.error('Error parsing chunk:', err);
-        // We gracefully ignore the chunk failure to salvage the rest of the document
+      }
+      
+      if (!chunkSuccess && lastError) {
+         // All fallback models were exhausted due to rate limits
+         throw lastError;
       }
     });
 
@@ -192,7 +277,11 @@ exports.uploadDocument = async (req, res, next) => {
       next(error);
     } else {
       console.error('Streaming error:', error);
-      res.write(JSON.stringify({ type: 'error', error: 'An unexpected error occurred during processing.' }) + '\n');
+      let errorMessage = 'An unexpected error occurred during processing.';
+      if (error.status === 429 || error.status === 503 || (error.message && (error.message.includes('429') || error.message.includes('503') || error.message.includes('quota')))) {
+         errorMessage = 'AI API Rate limit exceeded or service unavailable. Please try again later.';
+      }
+      res.write(JSON.stringify({ type: 'error', error: errorMessage }) + '\n');
       res.end();
     }
   }

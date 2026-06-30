@@ -144,6 +144,8 @@ exports.generateQuiz = async (req, res, next) => {
     // Strip sensitive fields from questions sent to the client
     const sanitizedQuestions = allQuestions.map(({ correct_answer, explanation, ...rest }) => rest);
 
+    console.log(`Generated quiz with ${sanitizedQuestions.length} questions for topics:`, topics);
+
     res.json({
       questions: sanitizedQuestions,
       answerKey,

@@ -103,9 +103,38 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
       const fileInput = await page.$('input[type="file"]');
       if (fileInput) {
         const fs = require('fs');
-        const testFilePath = __dirname + '/test_upload.txt';
-        fs.writeFileSync(testFilePath, "Sample topic: Automation\\nWhat is Puppeteer?\\nOptions: Browser automation tool, Video game, Text editor, Music player\\nCorrect Answer: Browser automation tool\\nExplanation: Puppeteer provides a high-level API to control Chrome.");
+        const { PDFDocument } = require('pdf-lib');
         
+        console.log("Generating an image-based scanned PDF to test OCR fallback...");
+        // 1. Take a screenshot of some text to simulate a scanned document
+        const scanPage = await browser.newPage();
+        await scanPage.setContent(`
+          <div style="font-size: 24px; padding: 20px;">
+            Sample topic: Automation<br/>
+            What is Puppeteer?<br/>
+            Options: Browser automation tool, Video game, Text editor, Music player<br/>
+            Correct Answer: Browser automation tool<br/>
+            Explanation: Puppeteer provides a high-level API to control Chrome.<br/>
+            <br/>
+            Sample topic: Science<br/>
+            What is the speed of light?<br/>
+            Options: 300,000 km/s, 150,000 km/s, 50,000 km/s, 10,000 km/s<br/>
+            Correct Answer: 300,000 km/s<br/>
+            Explanation: Light travels at approximately 299,792 km per second in a vacuum.
+          </div>
+        `);
+        const imgBuffer = await scanPage.screenshot({ type: 'png' });
+        await scanPage.close();
+        
+        // 2. Embed the image into a PDF with no selectable text
+        const pdfDoc = await PDFDocument.create();
+        const image = await pdfDoc.embedPng(imgBuffer);
+        const pagePdf = pdfDoc.addPage([image.width, image.height]);
+        pagePdf.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+        const pdfBytes = await pdfDoc.save();
+        
+        const testFilePath = __dirname + '/test_upload.pdf';
+        fs.writeFileSync(testFilePath, pdfBytes);
         await fileInput.uploadFile(testFilePath);
         await new Promise(r => setTimeout(r, 1000));
         
@@ -126,7 +155,7 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
         try {
             await page.waitForFunction(() => {
                 return Array.from(document.querySelectorAll('h3')).some(h => h.textContent === 'Review Topics');
-            }, { timeout: 30000 });
+            }, { timeout: 90000 });
         } catch(e) {
             console.log("Review screen didn't appear in time.");
         }
@@ -216,9 +245,9 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
       // We are now in the quiz, loop to answer questions
       let hasNext = true;
       while(hasNext) {
-        // Wait for the options container or button
+        // Wait for the options container or button (increase timeout for Next.js dev server compilation)
         try {
-          await page.waitForSelector('button.group', { timeout: 5000 });
+          await page.waitForSelector('button.group', { timeout: 20000 });
         } catch(e) {
           console.log("No options found, possibly at results screen.");
           break;
