@@ -108,19 +108,21 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
         console.log("Generating an image-based scanned PDF to test OCR fallback...");
         // 1. Take a screenshot of some text to simulate a scanned document
         const scanPage = await browser.newPage();
-        await scanPage.setContent(`
-          <div style="font-size: 24px; padding: 20px;">
+        
+        let questionsHTML = '';
+        for (let i = 1; i <= 10; i++) {
+          questionsHTML += `
             Sample topic: Automation<br/>
-            What is Puppeteer?<br/>
-            Options: Browser automation tool, Video game, Text editor, Music player<br/>
-            Correct Answer: Browser automation tool<br/>
-            Explanation: Puppeteer provides a high-level API to control Chrome.<br/>
-            <br/>
-            Sample topic: Science<br/>
-            What is the speed of light?<br/>
-            Options: 300,000 km/s, 150,000 km/s, 50,000 km/s, 10,000 km/s<br/>
-            Correct Answer: 300,000 km/s<br/>
-            Explanation: Light travels at approximately 299,792 km per second in a vacuum.
+            Question ${i}: What is ${i} + ${i}?<br/>
+            Options: ${i+i}, ${i+i+1}, ${i+i+2}, ${i+i+3}<br/>
+            Correct Answer: ${i+i}<br/>
+            Explanation: Basic math.<br/><br/>
+          `;
+        }
+
+        await scanPage.setContent(`
+          <div style="font-size: 16px; padding: 20px;">
+            ${questionsHTML}
           </div>
         `);
         const imgBuffer = await scanPage.screenshot({ type: 'png' });
@@ -158,6 +160,44 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
             }, { timeout: 90000 });
         } catch(e) {
             console.log("Review screen didn't appear in time.");
+        }
+
+        console.log("Testing drag-to-select and bulk delete...");
+        await new Promise(r => setTimeout(r, 2000));
+        const checkboxes = await page.$$('input[type="checkbox"]');
+        if (checkboxes.length >= 6) {
+            // checkboxes[0] is Select All, checkboxes[1] is Q1, checkboxes[5] is Q5
+            const cb1 = await checkboxes[1].evaluateHandle(el => el.parentElement);
+            const cb5 = await checkboxes[5].evaluateHandle(el => el.parentElement);
+            
+            const box1 = await cb1.boundingBox();
+            const box5 = await cb5.boundingBox();
+            
+            if (box1 && box5) {
+                // Move to first checkbox wrapper, mouse down
+                await page.mouse.move(box1.x + box1.width / 2, box1.y + box1.height / 2);
+                await page.mouse.down();
+                await new Promise(r => setTimeout(r, 1000)); // Deliberate pause to show selection start
+                
+                // Drag to fifth checkbox wrapper
+                await page.mouse.move(box5.x + box5.width / 2, box5.y + box5.height / 2, { steps: 30 });
+                await new Promise(r => setTimeout(r, 1000)); // Deliberate pause to show selected items
+                
+                // Mouse up
+                await page.mouse.up();
+                await new Promise(r => setTimeout(r, 1000));
+                
+                // Click "Delete Selected"
+                const allBtns = await page.$$('button');
+                for (const b of allBtns) {
+                    const text = await page.evaluate(el => el.textContent, b);
+                    if (text && text.includes('Delete Selected')) {
+                        await slowClick(page, b);
+                        break;
+                    }
+                }
+                await new Promise(r => setTimeout(r, 1000));
+            }
         }
 
         console.log("Modifying a topic...");
