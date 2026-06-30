@@ -22,6 +22,15 @@ export default function QuestionCard() {
         </span>
       </div>
 
+      {/* Context Passage */}
+      {question.context && (
+        <div className="mb-6 p-4 rounded-xl bg-surface-lighter/50 border border-glass-border">
+          <p className="text-sm md:text-base text-text-secondary leading-relaxed whitespace-pre-wrap">
+            {question.context}
+          </p>
+        </div>
+      )}
+
       {/* Question Text */}
       <h2 className="text-xl md:text-2xl font-semibold text-text-primary mb-8 leading-relaxed">
         {question.question_text}

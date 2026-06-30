@@ -2,6 +2,8 @@
 export interface Question {
   _id: string;
   topic: string;
+  subtopic?: string;
+  context?: string;
   question_text: string;
   options: string[];
 }

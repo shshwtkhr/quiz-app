@@ -182,7 +182,7 @@ exports.uploadDocument = async (req, res, next) => {
     };
 
     // 3. Process chunks
-    const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, a subtopic (if you cannot determine a specific subtopic, use "General"), the question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. Do not include any markdown formatting or extra text.\n\nText:\n`;
+    const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, a subtopic (if you cannot determine a specific subtopic, use "General"), the question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. If a question is based on a comprehension passage or a specific shared context in the text, extract that passage and include it in the "context" field. Do not include any markdown formatting or extra text.\n\nText:\n`;
     
     await asyncBatch(chunks, 3, async (chunk) => {
       if (typeof chunk === 'string' && !chunk.trim()) return;
@@ -207,6 +207,7 @@ exports.uploadDocument = async (req, res, next) => {
                   properties: {
                     topic: { type: 'string' },
                     subtopic: { type: 'string' },
+                    context: { type: 'string', description: 'The comprehension passage or shared context for the question, if any.' },
                     question_text: { type: 'string' },
                     options: { type: 'array', items: { type: 'string' } },
                     correct_answer: { type: 'string' },

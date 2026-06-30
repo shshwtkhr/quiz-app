@@ -109,7 +109,14 @@ export default function ResultsReview() {
                 </span>
               </div>
 
-              {/* Question Text */}
+              {/* Question Context & Text */}
+              {q.context && (
+                <div className="mb-4 p-3 rounded-lg bg-surface-lighter/50 border border-glass-border">
+                  <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
+                    {q.context}
+                  </p>
+                </div>
+              )}
               <p className="text-text-primary font-medium mb-4">{q.question_text}</p>
 
               {/* Options Review */}

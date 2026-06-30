@@ -14,6 +14,10 @@ const questionSchema = new mongoose.Schema(
       default: 'General',
       index: true,
     },
+    context: {
+      type: String,
+      trim: true,
+    },
     question_text: {
       type: String,
       required: [true, 'Question text is required'],
