@@ -166,22 +166,27 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
         await new Promise(r => setTimeout(r, 2000));
         const checkboxes = await page.$$('input[type="checkbox"]');
         if (checkboxes.length >= 6) {
-            // checkboxes[0] is Select All, checkboxes[1] is Q1, checkboxes[5] is Q5
-            const cb1 = await checkboxes[1].evaluateHandle(el => el.parentElement);
-            const cb5 = await checkboxes[5].evaluateHandle(el => el.parentElement);
+            // checkboxes[0] is Select All. We want to drag from checkboxes[1] to checkboxes[5]
+            const targets = [];
+            for (let i = 1; i <= 5; i++) {
+                const cbHandle = await checkboxes[i].evaluateHandle(el => el.parentElement);
+                const box = await cbHandle.boundingBox();
+                if (box) targets.push(box);
+            }
             
-            const box1 = await cb1.boundingBox();
-            const box5 = await cb5.boundingBox();
-            
-            if (box1 && box5) {
-                // Move to first checkbox wrapper, mouse down
-                await page.mouse.move(box1.x + box1.width / 2, box1.y + box1.height / 2);
+            if (targets.length === 5) {
+                // Move to first checkbox wrapper
+                await page.mouse.move(targets[0].x + targets[0].width / 2, targets[0].y + targets[0].height / 2);
                 await page.mouse.down();
-                await new Promise(r => setTimeout(r, 1000)); // Deliberate pause to show selection start
+                await new Promise(r => setTimeout(r, 500)); // Pause
                 
-                // Drag to fifth checkbox wrapper
-                await page.mouse.move(box5.x + box5.width / 2, box5.y + box5.height / 2, { steps: 30 });
-                await new Promise(r => setTimeout(r, 1000)); // Deliberate pause to show selected items
+                // Deliberately drag through each target to guarantee hover events fire
+                for (let i = 1; i < 5; i++) {
+                    await page.mouse.move(targets[i].x + targets[i].width / 2, targets[i].y + targets[i].height / 2, { steps: 10 });
+                    await new Promise(r => setTimeout(r, 300));
+                }
+                
+                await new Promise(r => setTimeout(r, 1000)); // Pause to show selected items
                 
                 // Mouse up
                 await page.mouse.up();
