@@ -95,13 +95,38 @@ exports.uploadDocument = async (req, res, next) => {
 
     // Extract text based on file type
     if (mimetype === 'application/pdf' || originalname.endsWith('.pdf')) {
-      const pdfData = await pdfParse(buffer);
+      const render_page = (pageData) => {
+        let render_options = { normalizeWhitespace: false, disableCombineTextItems: false };
+        return pageData.getTextContent(render_options).then(function(textContent) {
+          let lastY, text = '';
+          for (let item of textContent.items) {
+            let str = item.str;
+            if (item.fontName && str.trim().length > 0) {
+              let fontLower = item.fontName.toLowerCase();
+              if (fontLower.includes('bold')) {
+                str = '**' + str + '**';
+              } else if (fontLower.includes('italic')) {
+                str = '*' + str + '*';
+              }
+            }
+            if (lastY == item.transform[5] || !lastY) {
+              text += str;
+            } else {
+              text += '\n' + str;
+            }
+            lastY = item.transform[5];
+          }
+          return text;
+        });
+      };
+
+      const pdfData = await pdfParse(buffer, { pagerender: render_page });
       extractedText = pdfData.text;
     } else if (
       mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
       originalname.endsWith('.docx')
     ) {
-      const result = await mammoth.extractRawText({ buffer });
+      const result = await mammoth.convertToHtml({ buffer });
       extractedText = result.value;
     } else if (mimetype === 'text/plain' || originalname.endsWith('.txt')) {
       extractedText = buffer.toString('utf8');
@@ -182,7 +207,12 @@ exports.uploadDocument = async (req, res, next) => {
     };
 
     // 3. Process chunks
-    const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, a subtopic (if you cannot determine a specific subtopic, use "General"), the question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. If a question is based on a comprehension passage or a specific shared context in the text, extract that passage and include it in the "context" field. Do not include any markdown formatting or extra text.\n\nText:\n`;
+    const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, a subtopic (if you cannot determine a specific subtopic, use "General"), the question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. 
+CRITICAL: If a question is based on a comprehension passage, a shared context, or is preceded by a block of "Direction", "Directions", or "Instructions" (e.g., "Direction (181-185): ..."), you MUST extract that entire passage or direction block and duplicate it into the "context" field for EVERY SINGLE QUESTION that it applies to. Do not leave the context field empty if a question has an associated direction block above it.
+IMPORTANT: Preserve any essential text formatting (such as bolding or italics) in the question text, context, or options by using standard Markdown (e.g., **bold** or *italics*). Do not wrap the final JSON response in markdown code blocks.
+
+Text:
+`;
     
     await asyncBatch(chunks, 3, async (chunk) => {
       if (typeof chunk === 'string' && !chunk.trim()) return;

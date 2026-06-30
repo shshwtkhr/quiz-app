@@ -1,55 +1,68 @@
 # QuizMaster
 
-Watch the automated **[AI Document Upload & Quiz E2E Demo](e2e-test/quiz_app_demo.mp4)**.
+A modern, full-stack Quiz Application powered by AI that can automatically generate quizzes from uploaded documents (PDF, DOCX, TXT) and allows users to manage, edit, and take quizzes with a beautiful, dynamic UI.
 
-A modern, dynamic, and premium Quiz Application built with Next.js and Node.js.
+## 🚀 Features
 
-## Tech Stack
-* **Frontend**: Next.js 15, React, Tailwind CSS (with extensive custom Vanilla CSS for glassmorphism styling)
-* **Backend**: Node.js, Express, MongoDB (Mongoose)
-* **Testing & Automation**: Jest, Supertest, Puppeteer (with automated video recording script)
+- **AI Document Parsing**: Upload PDFs or DOCX files and let Gemini AI extract comprehensive questions, options, answers, and explanations.
+- **Smart Formatting Preservation**: Automatically detects and preserves markdown formatting (like bold and italic text) from source documents.
+- **Interactive Review & Inline Editing**: Review AI-generated questions and easily edit them inline before saving them to the database.
+- **Global Question Manager**: View all questions across all topics, search instantly, and selectively edit or delete questions.
+- **Dynamic Quiz Engine**: Build custom quizzes by selecting specific topics, adjusting question counts, and setting time limits.
+- **Beautiful UI**: Built with Next.js and Tailwind CSS featuring glassmorphism, responsive design, and smooth micro-animations.
 
-## Features
-- **Dynamic Topic Selection**: Users can choose from multiple topics and specify the number of questions they want to tackle.
-- **Adjustable Time Limits**: A sleek slider to set a custom time limit for the quiz.
-- **Real-time Quiz Engine**: Interactive quiz interface with smooth transitions, progress tracking, and instant validation.
-- **Detailed Results Review**: View score breakdowns, review correct answers, and read detailed explanations for every question.
-- **AI Document Upload**: Upload unstructured PDFs, DOCX, or TXT files and have Google's Gemini AI automatically parse and convert them into structured quiz questions!
-- **Premium Aesthetics**: Features a highly polished dark-mode UI with glassmorphism effects, dynamic gradients, and custom animations.
-- **E2E Test Automation**: Includes a Puppeteer script that fully automates testing the app (including AI uploads) and records a visual demo video with simulated click ripples.
-- **Rigorous Volume Testing**: Automated tests (`test-volume.js`) validate batch uploads and processing with 20+ generated AI questions across multi-formats (`.pdf`, `.docx`, `.txt`). The AI properly handles quotas with graceful failovers.
-## Prerequisites
-- Node.js (v18+)
-- MongoDB (running locally on `mongodb://localhost:27017` or configured via `.env`)
-- **Google Gemini API Key**: Required for the AI Document Upload feature. Add this to `backend/.env` as `GEMINI_API_KEY`.
+## 🛠️ Tech Stack
 
-## Getting Started
+### Frontend
+- **Framework**: Next.js 15 (React 19)
+- **Styling**: Tailwind CSS 4 with custom UI components
+- **State Management**: Zustand
+- **Icons**: Lucide React
+- **Markdown Parsing**: React Markdown
 
-### 1. Start the Backend
+### Backend
+- **Runtime**: Node.js & Express
+- **Database**: MongoDB (Mongoose)
+- **AI Integration**: Google Generative AI (Gemini 1.5 Flash)
+- **Document Processing**: `pdf-parse` for PDFs and `mammoth` for DOCX
+
+## 📦 Project Structure
+
+The project is structured as a monorepo:
+- `/frontend`: Next.js web application
+- `/backend`: Node.js Express server API
+
+## 🚦 Getting Started
+
+### 1. Backend Setup
 ```bash
 cd backend
 npm install
+```
+Create a `.env` file in the `backend` directory:
+```env
+PORT=5000
+MONGODB_URI=mongodb://localhost:27017/quiz-app
+CORS_ORIGIN=http://localhost:3000
+GEMINI_API_KEY=your_gemini_api_key
+```
+Start the backend server:
+```bash
 npm run dev
 ```
-The backend will run on `http://localhost:5000`. 
-*(Note: You can seed questions by sending a POST request to `/api/upload-questions`)*
 
-### 2. Start the Frontend
+### 2. Frontend Setup
 ```bash
 cd frontend
 npm install
+```
+Start the frontend development server:
+```bash
 npm run dev
 ```
-The frontend will be available at `http://localhost:3000`.
 
-### 3. E2E Recording (Optional)
-To run the automated Puppeteer script that navigates the app and records a demo video:
-```bash
-cd e2e-test
-npm install
-node record.js
-```
-The resulting video will be saved in the specified output directory.
+The application will be available at `http://localhost:3000`.
 
-## License
-MIT
+## 🧪 Testing
+
+The project includes an End-to-End testing suite built with Playwright (coming soon) which covers the full user flow from uploading a document to taking the quiz.

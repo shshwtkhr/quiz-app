@@ -155,3 +155,105 @@ exports.generateQuiz = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * GET /api/topics/:topic/questions
+ * Returns all questions for a specific topic, sorted alphabetically by subtopic.
+ */
+exports.getQuestionsByTopic = async (req, res, next) => {
+  try {
+    const { topic } = req.params;
+    const questions = await Question.find({ topic }).sort({ subtopic: 1 });
+    res.json(questions);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/questions/search
+ * Search questions by string match across question_text, options, explanation, correct_answer, topic, subtopic.
+ * Returns results sorted by topic, then subtopic.
+ */
+exports.searchQuestions = async (req, res, next) => {
+  try {
+    const { q } = req.query;
+    
+    // If no query is provided, return all questions sorted
+    if (q === undefined || q === null || q === '') {
+      const questions = await Question.find({}).sort({ topic: 1, subtopic: 1 });
+      return res.json(questions);
+    }
+
+    if (typeof q !== 'string') {
+      return res.status(400).json({ error: 'Search query "q" must be a string' });
+    }
+
+    // Escape regex characters for exact string match
+    const escapedQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedQuery, 'i');
+
+    const questions = await Question.find({
+      $or: [
+        { question_text: regex },
+        { options: regex },
+        { explanation: regex },
+        { correct_answer: regex },
+        { topic: regex },
+        { subtopic: regex },
+      ],
+    }).sort({ topic: 1, subtopic: 1 });
+
+    res.json(questions);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/questions/:id
+ * Updates a specific question's fields.
+ */
+exports.updateQuestion = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const updatedQuestion = await Question.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedQuestion) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+
+    res.json(updatedQuestion);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/questions
+ * Deletes multiple questions given an array of IDs.
+ */
+exports.deleteQuestions = async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Request body must contain an array of ids' });
+    }
+
+    const result = await Question.deleteMany({ _id: { $in: ids } });
+
+    res.json({
+      message: 'Questions deleted successfully',
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

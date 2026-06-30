@@ -1,6 +1,8 @@
 'use client';
 
+import React from 'react';
 import { useQuizStore } from '@/stores/quiz-store-provider';
+import { formatMarkdownText } from '@/lib/formatText';
 
 export default function QuestionCard() {
   const currentIndex = useQuizStore((s) => s.currentIndex);
@@ -26,14 +28,14 @@ export default function QuestionCard() {
       {question.context && (
         <div className="mb-6 p-4 rounded-xl bg-surface-lighter/50 border border-glass-border">
           <p className="text-sm md:text-base text-text-secondary leading-relaxed whitespace-pre-wrap">
-            {question.context}
+            {formatMarkdownText(question.context)}
           </p>
         </div>
       )}
 
       {/* Question Text */}
       <h2 className="text-xl md:text-2xl font-semibold text-text-primary mb-8 leading-relaxed">
-        {question.question_text}
+        {formatMarkdownText(question.question_text)}
       </h2>
 
       {/* Options */}
@@ -62,7 +64,7 @@ export default function QuestionCard() {
                 {letter}
               </span>
               <span className={`text-base ${ isSelected ? 'text-text-primary font-medium' : 'text-text-secondary' }`}>
-                {option}
+                {formatMarkdownText(option)}
               </span>
             </button>
           );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuizStore } from '@/stores/quiz-store-provider';
 import Timer from './Timer';
@@ -25,8 +25,13 @@ export default function QuizEngine() {
   const progress = ((currentIndex + 1) / totalQuestions) * 100;
 
   // Navigate to results when submitted
+  useEffect(() => {
+    if (isSubmitted) {
+      router.push('/results');
+    }
+  }, [isSubmitted, router]);
+
   if (isSubmitted) {
-    router.push('/results');
     return null;
   }
 

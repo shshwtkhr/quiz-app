@@ -5,6 +5,10 @@ const {
   uploadQuestions,
   getTopics,
   generateQuiz,
+  getQuestionsByTopic,
+  searchQuestions,
+  updateQuestion,
+  deleteQuestions,
 } = require('../controllers/questionController');
 const { uploadDocument } = require('../controllers/documentController');
 
@@ -21,5 +25,17 @@ router.get('/topics', getTopics);
 
 // POST /api/generate-quiz - Generate a randomized quiz
 router.post('/generate-quiz', generateQuiz);
+
+// GET /api/topics/:topic/questions - Get all questions for a specific topic
+router.get('/topics/:topic/questions', getQuestionsByTopic);
+
+// GET /api/questions/search - Global search across all questions
+router.get('/questions/search', searchQuestions);
+
+// PUT /api/questions/:id - Update a question
+router.put('/questions/:id', updateQuestion);
+
+// DELETE /api/questions - Delete multiple questions
+router.delete('/questions', deleteQuestions);
 
 module.exports = router;

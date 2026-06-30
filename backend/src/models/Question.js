@@ -11,7 +11,6 @@ const questionSchema = new mongoose.Schema(
     subtopic: {
       type: String,
       trim: true,
-      default: 'General',
       index: true,
     },
     context: {

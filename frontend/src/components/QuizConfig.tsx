@@ -6,6 +6,8 @@ import { fetchTopics, generateQuiz } from '@/lib/api';
 import { TopicSelection } from '@/types';
 import { useQuizStore } from '@/stores/quiz-store-provider';
 import UploadDocumentModal from './UploadDocumentModal';
+import ManageTopicModal from './ManageTopicModal';
+import { Pencil, Settings } from 'lucide-react';
 
 export default function QuizConfig() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export default function QuizConfig() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [manageTopicOpen, setManageTopicOpen] = useState<string | null>(null);
 
   const loadTopics = () => {
     setLoading(true);
@@ -40,6 +43,11 @@ export default function QuizConfig() {
   }, []);
 
   const handleUploadSuccess = () => {
+    loadTopics();
+  };
+
+  const handleManageTopicClose = () => {
+    setManageTopicOpen(null);
     loadTopics();
   };
 
@@ -97,15 +105,24 @@ export default function QuizConfig() {
       <section className="mb-10 animate-slide-up" style={{ animationDelay: '0.1s' }}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl font-semibold text-text-primary">Choose Topics</h2>
-          <button
-            onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-surface-light border border-glass-border hover:border-primary/50 hover:text-primary transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
-            Upload Document
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/manage')}
+              className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-surface-light border border-glass-border hover:border-primary/50 hover:text-primary transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              Global Manager
+            </button>
+            <button
+              onClick={() => setIsUploadModalOpen(true)}
+              className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-surface-light border border-glass-border hover:border-primary/50 hover:text-primary transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Upload Document
+            </button>
+          </div>
         </div>
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -120,10 +137,18 @@ export default function QuizConfig() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {topics.map((t, i) => (
-              <button
+              <div
                 key={t.topic}
                 onClick={() => toggleTopic(i)}
-                className={`glass-card p-5 text-left transition-all cursor-pointer ${
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleTopic(i);
+                  }
+                }}
+                className={`glass-card p-5 text-left transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   t.selected
                     ? 'border-primary/50 bg-primary/10 shadow-[0_0_20px_oklch(0.55_0.2_270_/_0.15)]'
                     : ''
@@ -131,19 +156,28 @@ export default function QuizConfig() {
               >
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-lg font-semibold text-text-primary">{t.topic}</h3>
-                  <span
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                      t.selected
-                        ? 'border-primary bg-primary'
-                        : 'border-text-muted'
-                    }`}
-                  >
-                    {t.selected && (
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setManageTopicOpen(t.topic); }}
+                      className="p-1.5 rounded-md hover:bg-surface-dark text-text-muted hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                      title="Manage questions in this topic"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <span
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                        t.selected
+                          ? 'border-primary bg-primary'
+                          : 'border-text-muted'
+                      }`}
+                    >
+                      {t.selected && (
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </span>
+                  </div>
                 </div>
                 <p className="text-sm text-text-muted">
                   {t.maxCount} question{t.maxCount !== 1 ? 's' : ''} available
@@ -165,7 +199,7 @@ export default function QuizConfig() {
                     <span className="text-xs text-text-muted">/ {t.maxCount}</span>
                   </div>
                 )}
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -240,6 +274,12 @@ export default function QuizConfig() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={handleUploadSuccess}
+      />
+      
+      <ManageTopicModal 
+        isOpen={!!manageTopicOpen}
+        onClose={handleManageTopicClose}
+        topic={manageTopicOpen || ''}
       />
     </div>
   );

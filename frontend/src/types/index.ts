@@ -8,6 +8,12 @@ export interface Question {
   options: string[];
 }
 
+/** Full Question data including correct answer and explanation (used for manage section) */
+export interface QuestionData extends Question {
+  correct_answer: string;
+  explanation: string;
+}
+
 /** Answer key entry for a single question */
 export interface AnswerKeyEntry {
   correct_answer: string;

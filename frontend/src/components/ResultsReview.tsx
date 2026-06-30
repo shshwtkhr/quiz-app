@@ -1,7 +1,9 @@
 'use client';
 
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuizStore } from '@/stores/quiz-store-provider';
+import { formatMarkdownText } from '@/lib/formatText';
 
 export default function ResultsReview() {
   const router = useRouter();
@@ -113,11 +115,13 @@ export default function ResultsReview() {
               {q.context && (
                 <div className="mb-4 p-3 rounded-lg bg-surface-lighter/50 border border-glass-border">
                   <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
-                    {q.context}
+                    {formatMarkdownText(q.context)}
                   </p>
                 </div>
               )}
-              <p className="text-text-primary font-medium mb-4">{q.question_text}</p>
+              <h3 className="text-lg font-medium text-text-primary mb-4">
+                {formatMarkdownText(q.question_text)}
+              </h3>
 
               {/* Options Review */}
               <div className="space-y-2 mb-4">
@@ -140,7 +144,7 @@ export default function ResultsReview() {
                       <span className="text-xs font-bold w-6 h-6 rounded flex items-center justify-center bg-black/20">
                         {String.fromCharCode(65 + optIdx)}
                       </span>
-                      <span className="text-sm">{option}</span>
+                      <span className="text-sm">{formatMarkdownText(option)}</span>
                       {isCorrectAnswer && (
                         <span className="ml-auto text-xs font-medium">✓ Correct</span>
                       )}
@@ -161,7 +165,9 @@ export default function ResultsReview() {
               {answer?.explanation && (
                 <div className="mt-3 p-4 rounded-xl bg-accent/5 border border-accent/20">
                   <p className="text-sm text-accent-light font-medium mb-1">Explanation</p>
-                  <p className="text-sm text-text-secondary leading-relaxed">{answer.explanation}</p>
+                  <p className="text-sm text-blue-200 leading-relaxed">
+                    {formatMarkdownText(answer?.explanation)}
+                  </p>
                 </div>
               )}
             </div>
