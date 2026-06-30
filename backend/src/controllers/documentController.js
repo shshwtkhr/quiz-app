@@ -42,23 +42,29 @@ async function getAvailableModels(ai) {
       }
     }
     
-    // Sort logic to prefer Pro > Flash > Lite > others, and prefer stable over preview
+    // Sort logic to prefer Flash models which are fast and reliable on free tier
     const getScore = (name) => {
       let score = 0;
-      if (name.includes('pro')) score += 100;
-      else if (name.includes('flash')) score += 50;
+      if (name.includes('3.1') || name.includes('3.0') || name.includes('3-pro')) return -100; // Avoid non-free tier models
+      if (name.includes('2.5-flash')) score += 100;
+      else if (name.includes('2.0-flash')) score += 80;
+      else if (name.includes('1.5-flash')) score += 50;
+      else if (name.includes('pro')) score += 20;
       
-      if (!name.includes('preview') && !name.includes('exp')) score += 20; // Prefer stable
+      if (!name.includes('preview') && !name.includes('exp')) score += 10; // Prefer stable
       if (name.includes('lite') || name.includes('8b')) score -= 10;
       return score;
     };
     
     models.sort((a, b) => getScore(b) - getScore(a));
     
-    if (models.length > 0) {
-      cachedModels = models;
+    // Filter out models with negative scores
+    const filteredModels = models.filter(m => getScore(m) > -50);
+    
+    if (filteredModels.length > 0) {
+      cachedModels = filteredModels;
       lastModelFetch = Date.now();
-      return models;
+      return filteredModels;
     }
   } catch (err) {
     console.error("Failed to list models, using hardcoded fallback", err);
@@ -239,7 +245,7 @@ exports.uploadDocument = async (req, res, next) => {
           lastError = err;
           // If rate limit (429), overloaded (503), or not found (404), try next model
           if (err.status === 429 || err.status === 503 || err.status === 404 || (err.message && (err.message.includes('429') || err.message.includes('503') || err.message.includes('404') || err.message.includes('quota') || err.message.toLowerCase().includes('not found') || err.message.includes('NOT_FOUND')))) {
-             console.warn(`Model ${modelName} hit rate limit or is unavailable, trying next model...`);
+             console.warn(`Model ${modelName} hit rate limit or is unavailable (Error: ${err.message}), trying next model...`);
              continue;
           }
           

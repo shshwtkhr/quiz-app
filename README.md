@@ -17,7 +17,7 @@ A modern, dynamic, and premium Quiz Application built with Next.js and Node.js.
 - **AI Document Upload**: Upload unstructured PDFs, DOCX, or TXT files and have Google's Gemini AI automatically parse and convert them into structured quiz questions!
 - **Premium Aesthetics**: Features a highly polished dark-mode UI with glassmorphism effects, dynamic gradients, and custom animations.
 - **E2E Test Automation**: Includes a Puppeteer script that fully automates testing the app (including AI uploads) and records a visual demo video with simulated click ripples.
-
+- **Rigorous Volume Testing**: Automated tests (`test-volume.js`) validate batch uploads and processing with 20+ generated AI questions across multi-formats (`.pdf`, `.docx`, `.txt`). The AI properly handles quotas with graceful failovers.
 ## Prerequisites
 - Node.js (v18+)
 - MongoDB (running locally on `mongodb://localhost:27017` or configured via `.env`)
