@@ -1,0 +1,18 @@
+E2E-TEST-TOPIC-XYZ123
+
+Direction (1-2): Read the following passage carefully.
+The E2E testing framework being used is Playwright. It automatically records videos.
+
+1. What framework is being used for E2E testing?
+A) Jest
+B) Playwright
+C) Cypress
+D) Selenium
+Answer: B
+
+2. What does Playwright automatically record?
+A) Audio
+B) Videos
+C) Keystrokes
+D) Mouse position
+Answer: B

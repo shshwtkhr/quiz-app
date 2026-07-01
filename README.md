@@ -65,4 +65,26 @@ The application will be available at `http://localhost:3000`.
 
 ## 🧪 Testing
 
-The project includes an End-to-End testing suite built with Playwright (coming soon) which covers the full user flow from uploading a document to taking the quiz.
+The project includes an End-to-End testing suite built with Playwright which covers the full user flow from uploading a document to taking the quiz and reviewing the results.
+
+To run the tests:
+
+```bash
+cd frontend
+npm run test:e2e
+```
+
+To view the HTML report and recorded videos after a test run:
+```bash
+npx playwright show-report
+```
+
+### Database Cleanup
+
+The E2E tests will create mock topics (e.g. `E2E-TEST-TOPIC-...`) in the database. A cleanup script is provided to remove these test artifacts.
+
+To clean the database of all E2E test data:
+```bash
+cd backend
+npm run db:cleanup
+```
