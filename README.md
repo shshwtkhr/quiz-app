@@ -67,7 +67,15 @@ The application will be available at `http://localhost:3000`.
 
 The project includes an End-to-End testing suite built with Playwright which covers the full user flow from uploading a document to taking the quiz and reviewing the results.
 
-To run the tests:
+### Full App Flow Testing Video
+
+Watch the complete automated E2E test running through the entire application flow:
+
+<video src="./assets/e2e-success.webm" controls="controls" muted="muted" width="100%"></video>
+
+*(If the video above doesn't play automatically on GitHub, you can [download/view it here](./assets/e2e-success.webm))*
+
+To run the tests locally:
 
 ```bash
 cd frontend
