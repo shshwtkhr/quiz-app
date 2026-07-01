@@ -78,13 +78,15 @@ Watch the complete automated E2E test running through the entire application flo
 To run the tests locally:
 
 ```bash
-cd frontend
-npm run test:e2e
+cd e2e-test
+npm install
+npm run test
 ```
 
 To view the HTML report and recorded videos after a test run:
 ```bash
-npx playwright show-report
+cd e2e-test
+npm run report
 ```
 
 ### Database Cleanup
@@ -93,6 +95,6 @@ The E2E tests will create mock topics (e.g. `E2E-TEST-TOPIC-...`) in the databas
 
 To clean the database of all E2E test data:
 ```bash
-cd backend
-npm run db:cleanup
+cd e2e-test
+npm run cleanup
 ```

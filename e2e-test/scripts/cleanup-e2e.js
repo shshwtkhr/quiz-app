@@ -1,6 +1,7 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../backend/.env') });
 const mongoose = require('mongoose');
-const Question = require('./src/models/Question');
+const Question = require('../../backend/src/models/Question');
 
 async function cleanup() {
   try {
