@@ -26,9 +26,10 @@ test.describe('QuizMaster Full E2E Flow', () => {
         .e2e-ripple {
           position: fixed;
           border-radius: 50%;
-          background-color: rgba(255, 0, 0, 0.5);
+          background-color: rgba(255, 0, 0, 0.6);
+          border: 2px solid red;
           pointer-events: none;
-          z-index: 999999;
+          z-index: 2147483647;
           width: 30px;
           height: 30px;
           animation: e2e-ripple-anim 0.8s ease-out forwards;
@@ -36,14 +37,14 @@ test.describe('QuizMaster Full E2E Flow', () => {
       `;
       document.head.appendChild(style);
 
-      document.addEventListener('click', (e) => {
+      window.addEventListener('mousedown', (e) => {
         const ripple = document.createElement('div');
         ripple.className = 'e2e-ripple';
         ripple.style.left = e.clientX + 'px';
         ripple.style.top = e.clientY + 'px';
         document.body.appendChild(ripple);
         setTimeout(() => ripple.remove(), 1000);
-      });
+      }, true); // Use capture phase to bypass stopPropagation
     });
 
     // 1. Visit homepage
