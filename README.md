@@ -2,6 +2,11 @@
 
 A modern, full-stack Quiz Application powered by AI that can automatically generate quizzes from uploaded documents (PDF, DOCX, TXT) and allows users to manage, edit, and take quizzes with a beautiful, dynamic UI.
 
+## 🎥 Full Application Flow
+Below is a real-time recording of the complete application flow, validated by our automated End-to-End (E2E) testing framework:
+
+<video src="https://github.com/shshwtkhr/quiz-app/raw/main/e2e-test/test-results/demo/e2e-success.webm" width="100%" controls autoplay loop></video>
+
 ## ✨ Features
 
 - **Document Upload**: Upload raw text files.
