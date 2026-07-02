@@ -55,7 +55,7 @@ export default function GlobalManagePage() {
         </button>
         <div>
           <h1 className="text-3xl font-bold text-text-primary">Global Manager</h1>
-          <p className="text-text-secondary">Search, edit, and manage all your questions globally</p>
+          <p className="text-text-secondary">Search, edit, and manage all your questions globally. (Loaded: {questions.length})</p>
         </div>
       </div>
 

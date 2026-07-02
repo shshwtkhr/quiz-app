@@ -2,14 +2,32 @@
 
 A modern, full-stack Quiz Application powered by AI that can automatically generate quizzes from uploaded documents (PDF, DOCX, TXT) and allows users to manage, edit, and take quizzes with a beautiful, dynamic UI.
 
-## 🚀 Features
+## ✨ Features
 
-- **AI Document Parsing**: Upload PDFs or DOCX files and let Gemini AI extract comprehensive questions, options, answers, and explanations.
-- **Smart Formatting Preservation**: Automatically detects and preserves markdown formatting (like bold and italic text) from source documents.
-- **Interactive Review & Inline Editing**: Review AI-generated questions and easily edit them inline before saving them to the database.
-- **Global Question Manager**: View all questions across all topics, search instantly, and selectively edit or delete questions.
-- **Dynamic Quiz Engine**: Build custom quizzes by selecting specific topics, adjusting question counts, and setting time limits.
-- **Beautiful UI**: Built with Next.js and Tailwind CSS featuring glassmorphism, responsive design, and smooth micro-animations.
+- **Document Upload**: Upload raw text files.
+- **AI-Powered Parsing**: Uses Google Gemini to parse content, extract topics, and generate questions, correct answers, and explanations.
+- **Context Preservation**: Retains the specific source passage associated with each question to provide grounded explanations.
+- **Dynamic Quiz Engine**: Test your knowledge on specific topics with randomized questions and a timer.
+- **Global Manager**: Easily search, bulk edit, inline-edit, categorize, and delete your questions across the entire database.
+- **E2E Testing**: Comprehensive end-to-end testing with **Playwright**, validating the full user flow from upload to quiz results.
+
+## 🧪 Testing
+
+The application includes a comprehensive End-to-End (E2E) testing suite powered by Playwright. The E2E tests validate the complete user journey:
+1. Uploading a document
+2. AI Question parsing
+3. Inline editing and Topic tagging
+4. Global Manager search and verification
+5. Playing a generated quiz and validating the Results page
+
+You can run the tests by navigating to the `e2e-test` directory and executing:
+```bash
+npm run test
+```
+To clean up the test-generated database records:
+```bash
+cd backend && npm run db:cleanup
+```
 
 ## 🛠️ Tech Stack
 

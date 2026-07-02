@@ -4,19 +4,19 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 /** Fetch all available topics with question counts */
 export async function fetchTopics(): Promise<{ _id: string; count: number }[]> {
-  const res = await fetch(`${API_BASE}/topics`);
+  const res = await fetch(`${API_BASE}/topics`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Failed to fetch topics');
   return res.json();
 }
 
 export async function fetchQuestionsByTopic(topic: string): Promise<QuestionData[]> {
-  const res = await fetch(`${API_BASE}/topics/${encodeURIComponent(topic)}/questions`);
+  const res = await fetch(`${API_BASE}/topics/${encodeURIComponent(topic)}/questions`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Failed to fetch questions for topic');
   return res.json();
 }
 
 export async function searchQuestions(query: string): Promise<QuestionData[]> {
-  const res = await fetch(`${API_BASE}/questions/search?q=${encodeURIComponent(query)}`);
+  const res = await fetch(`${API_BASE}/questions/search?q=${encodeURIComponent(query)}`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Failed to search questions');
   return res.json();
 }
