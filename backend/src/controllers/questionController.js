@@ -90,6 +90,21 @@ exports.getTopics = async (req, res, next) => {
 };
 
 /**
+ * GET /api/sources
+ * Returns all unique sources.
+ */
+exports.getSources = async (req, res, next) => {
+  try {
+    const sources = await Question.distinct('source');
+    // Filter out null/undefined/empty and sort
+    const validSources = sources.filter(s => s && s.trim().length > 0).sort();
+    res.json(validSources);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * POST /api/generate-quiz
  * Accepts { topics: [{ topic: string, count: number }] }
  * Returns randomized questions (without answers) and a separate answer key.
@@ -201,6 +216,7 @@ exports.searchQuestions = async (req, res, next) => {
         { correct_answer: regex },
         { topic: regex },
         { subtopic: regex },
+        { source: regex },
       ],
     }).sort({ topic: 1, subtopic: 1 });
 

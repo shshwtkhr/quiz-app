@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
-test.setTimeout(120000); // 2 minutes for Next.js compile and Gemini API
+test.setTimeout(180000); // 3 minutes for Next.js compile and Gemini API
 
 test.describe('QuizMaster Full E2E Flow', () => {
   // We use this specific topic name so it can be cleaned up later by the DB script.
@@ -35,20 +35,20 @@ test.describe('QuizMaster Full E2E Flow', () => {
           .e2e-ripple {
             position: fixed;
             border-radius: 50%;
-            background-color: rgba(255, 0, 0, 0.6);
-            border: 2px solid red;
+            background-color: rgba(255, 0, 0, 0.8);
+            border: 4px solid red;
             pointer-events: none;
             z-index: 2147483647;
-            width: 30px;
-            height: 30px;
+            width: 50px;
+            height: 50px;
             animation: e2e-ripple-anim 0.8s ease-out forwards;
           }
           .e2e-cursor {
             position: fixed;
-            width: 20px;
-            height: 20px;
-            background: rgba(255, 0, 0, 0.4);
-            border: 2px solid red;
+            width: 24px;
+            height: 24px;
+            background: rgba(255, 0, 0, 0.5);
+            border: 3px solid red;
             border-radius: 50%;
             pointer-events: none;
             z-index: 2147483646;

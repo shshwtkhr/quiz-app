@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   uploadQuestions,
   getTopics,
+  getSources,
   generateQuiz,
   getQuestionsByTopic,
   searchQuestions,
@@ -22,6 +23,9 @@ router.post('/upload-document', upload.single('file'), uploadDocument);
 
 // GET /api/topics - Get all unique topics with counts
 router.get('/topics', getTopics);
+
+// GET /api/sources - Get all unique sources
+router.get('/sources', getSources);
 
 // POST /api/generate-quiz - Generate a randomized quiz
 router.post('/generate-quiz', generateQuiz);

@@ -126,7 +126,7 @@ exports.uploadDocument = async (req, res, next) => {
       mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
       originalname.endsWith('.docx')
     ) {
-      const result = await mammoth.convertToHtml({ buffer });
+      const result = await mammoth.extractRawText({ buffer });
       extractedText = result.value;
     } else if (mimetype === 'text/plain' || originalname.endsWith('.txt')) {
       extractedText = buffer.toString('utf8');

@@ -22,6 +22,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [errorMessage, setErrorMessage] = useState('');
   const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
   const [existingTopics, setExistingTopics] = useState<TopicData[]>([]);
+  const [existingSources, setExistingSources] = useState<string[]>([]);
   const [parsedCount, setParsedCount] = useState(0);
   
   // Inline edit state
@@ -32,8 +33,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [selectedQuestions, setSelectedQuestions] = useState<Set<number>>(new Set());
   const [bulkTopic, setBulkTopic] = useState('');
   const [bulkSubtopic, setBulkSubtopic] = useState('');
+  const [bulkSource, setBulkSource] = useState('');
   const [isBulkNewTopic, setIsBulkNewTopic] = useState(false);
   const [isBulkNewSubtopic, setIsBulkNewSubtopic] = useState(false);
+  const [isBulkNewSource, setIsBulkNewSource] = useState(false);
   
   const [isDragSelecting, setIsDragSelecting] = useState(false);
   const [dragSelectMode, setDragSelectMode] = useState<'add' | 'remove' | null>(null);
@@ -161,8 +164,13 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
           const topicsData = await topicsRes.json();
           setExistingTopics(topicsData);
         }
+        const sourcesRes = await fetch('http://localhost:5000/api/sources');
+        if (sourcesRes.ok) {
+          const sourcesData = await sourcesRes.json();
+          setExistingSources(sourcesData);
+        }
       } catch (e) {
-        console.error('Failed to fetch existing topics', e);
+        console.error('Failed to fetch existing topics/sources', e);
       }
 
       setStatus('review');
@@ -184,18 +192,27 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setParsedQuestions(updated);
   };
 
+  const handleSourceChange = (index: number, newSource: string) => {
+    const updated = [...parsedQuestions];
+    updated[index].source = newSource;
+    setParsedQuestions(updated);
+  };
+
   const handleBulkApply = () => {
     const updated = [...parsedQuestions];
     selectedQuestions.forEach(index => {
       if (bulkTopic) updated[index].topic = bulkTopic;
       if (bulkSubtopic) updated[index].subtopic = bulkSubtopic;
+      if (bulkSource) updated[index].source = bulkSource;
     });
     setParsedQuestions(updated);
     setSelectedQuestions(new Set());
     setBulkTopic('');
     setBulkSubtopic('');
+    setBulkSource('');
     setIsBulkNewTopic(false);
     setIsBulkNewSubtopic(false);
+    setIsBulkNewSource(false);
   };
 
   const handleDeleteSelected = () => {
@@ -240,6 +257,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setSelectedQuestions(new Set());
     setBulkTopic('');
     setBulkSubtopic('');
+    setBulkSource('');
     setEditingIndex(null);
     setEditFormData(null);
   };
@@ -249,6 +267,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setEditFormData({
       topic: q.topic || '',
       subtopic: q.subtopic || '',
+      source: q.source || '',
       context: q.context || '',
       question_text: q.question_text || '',
       options: [...(q.options || [])],
@@ -369,10 +388,30 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                     <option value="NEW" className="bg-surface font-bold text-primary">+ Create New</option>
                   </select>
                 )}
+
+                {isBulkNewSource ? (
+                  <div className="flex gap-2 flex-1 min-w-[150px]">
+                    <input type="text" value={bulkSource} onChange={(e) => setBulkSource(e.target.value)} className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm" placeholder="New source..." />
+                    <button onClick={() => { setIsBulkNewSource(false); setBulkSource(''); }} className="text-xs px-2 bg-surface-light rounded">Cancel</button>
+                  </div>
+                ) : (
+                  <select
+                    value={bulkSource}
+                    onChange={(e) => {
+                      if (e.target.value === 'NEW') setIsBulkNewSource(true);
+                      else setBulkSource(e.target.value);
+                    }}
+                    className="flex-1 min-w-[150px] bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none"
+                  >
+                    <option value="" className="bg-surface text-text-muted">Select Source...</option>
+                    {existingSources.map(s => <option key={s} value={s} className="bg-surface text-text-primary">{s}</option>)}
+                    <option value="NEW" className="bg-surface font-bold text-primary">+ Create New</option>
+                  </select>
+                )}
                 
                 <button 
                   onClick={handleBulkApply}
-                  disabled={!bulkTopic && !bulkSubtopic}
+                  disabled={!bulkTopic && !bulkSubtopic && !bulkSource}
                   className="px-4 py-1.5 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary-dark transition disabled:opacity-50"
                 >
                   Apply
@@ -438,6 +477,20 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
 
                     {editingIndex === index ? (
                       <div className="space-y-4 mt-4 p-4 bg-surface-dark/50 border border-glass-border rounded-lg">
+                        <div>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">Source</label>
+                          <input
+                            type="text"
+                            list="upload-sources-list"
+                            value={editFormData.source || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, source: e.target.value })}
+                            className="w-full px-3 py-2 bg-surface border border-glass-border rounded-lg text-sm focus:border-primary text-text-primary"
+                            placeholder="e.g. 2024 Exam, Book Chapter 5..."
+                          />
+                          <datalist id="upload-sources-list">
+                            {existingSources.map(s => <option key={s} value={s} />)}
+                          </datalist>
+                        </div>
                         <div>
                           <label className="block text-xs font-medium text-text-secondary mb-1">Passage Context</label>
                           <textarea
@@ -592,6 +645,41 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                               {!getSubtopicsForTopic(q.topic).includes(q.subtopic) && q.subtopic && <option value={q.subtopic} className="bg-surface text-text-primary">{q.subtopic} (AI)</option>}
                               {getSubtopicsForTopic(q.topic).map((s) => <option key={s} value={s} className="bg-surface text-text-primary">{s}</option>)}
                               <option value="NEW_SUBTOPIC_SELECT" className="bg-surface font-bold text-primary">+ Create New Subtopic</option>
+                            </select>
+                          )}
+                        </div>
+
+                        <div className="flex-1">
+                          {q._isNewSource ? (
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={q.source || ''}
+                                onChange={(e) => handleSourceChange(index, e.target.value)}
+                                className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary focus:outline-none focus:border-primary text-sm"
+                                placeholder="New source..."
+                              />
+                              <button onClick={() => { const updated = [...parsedQuestions]; updated[index]._isNewSource = false; updated[index].source = ''; setParsedQuestions(updated); }} className="px-2 bg-surface-light border border-glass-border rounded-lg text-xs">Cancel</button>
+                            </div>
+                          ) : (
+                            <select
+                              value={existingSources.includes(q.source) ? q.source : (q.source ? q.source : 'NEW_SOURCE_SELECT')}
+                              onChange={(e) => {
+                                if (e.target.value === 'NEW_SOURCE_SELECT') {
+                                   const updated = [...parsedQuestions];
+                                   updated[index]._isNewSource = true;
+                                   updated[index].source = '';
+                                   setParsedQuestions(updated);
+                                } else {
+                                   handleSourceChange(index, e.target.value);
+                                }
+                              }}
+                              className="w-full bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none cursor-pointer"
+                            >
+                              {!existingSources.includes(q.source) && q.source && <option value={q.source} className="bg-surface text-text-primary">{q.source} (AI)</option>}
+                              <option value="" className="bg-surface text-text-muted">No Source</option>
+                              {existingSources.map((s) => <option key={s} value={s} className="bg-surface text-text-primary">{s}</option>)}
+                              <option value="NEW_SOURCE_SELECT" className="bg-surface font-bold text-primary">+ Create New Source</option>
                             </select>
                           )}
                         </div>

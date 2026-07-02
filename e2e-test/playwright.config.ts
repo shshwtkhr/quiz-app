@@ -12,7 +12,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     video: 'on', // Record video for all tests
     launchOptions: {
-      slowMo: 500, // Slow down execution to make video half speed
+      slowMo: 250, // Slow down execution to make video half speed
     },
   },
   projects: [

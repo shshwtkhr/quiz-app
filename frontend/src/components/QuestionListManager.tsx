@@ -19,6 +19,15 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [existingSources, setExistingSources] = useState<string[]>([]);
+
+  // Fetch sources for datalist
+  React.useEffect(() => {
+    fetch('http://localhost:5000/api/sources')
+      .then(res => res.json())
+      .then(data => setExistingSources(data || []))
+      .catch(err => console.error('Failed to fetch sources', err));
+  }, []);
 
   // Filter questions based on search query
   const filteredQuestions = useMemo(() => {
@@ -32,7 +41,8 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
         q.correct_answer.toLowerCase().includes(lowerQuery) ||
         q.explanation.toLowerCase().includes(lowerQuery) ||
         q.topic.toLowerCase().includes(lowerQuery) ||
-        (q.subtopic && q.subtopic.toLowerCase().includes(lowerQuery))
+        (q.subtopic && q.subtopic.toLowerCase().includes(lowerQuery)) ||
+        (q.source && q.source.toLowerCase().includes(lowerQuery))
       );
     });
   }, [questions, searchQuery]);
@@ -101,7 +111,8 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
       options: [...q.options],
       correct_answer: q.correct_answer,
       explanation: q.explanation,
-      subtopic: q.subtopic || ''
+      subtopic: q.subtopic || '',
+      source: q.source || ''
     });
     // Ensure expanded
     setExpandedIds((prev) => new Set(prev).add(q._id));
@@ -223,6 +234,20 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
                             />
                           </div>
                           <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Source (Optional)</label>
+                            <input
+                              type="text"
+                              list="edit-sources-list"
+                              value={editFormData.source || ''}
+                              onChange={(e) => setEditFormData({ ...editFormData, source: e.target.value })}
+                              className="w-full px-3 py-2 bg-surface-dark border border-glass-border rounded-lg text-sm focus:border-primary text-text-primary"
+                              placeholder="e.g. 2024 Exam, Book Chapter 5..."
+                            />
+                            <datalist id="edit-sources-list">
+                              {existingSources.map(s => <option key={s} value={s} />)}
+                            </datalist>
+                          </div>
+                          <div>
                             <label className="block text-xs font-medium text-text-secondary mb-1">Context / Passage (Optional)</label>
                             <textarea
                               value={editFormData.context}
@@ -301,6 +326,11 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
                                   <p className="text-text-secondary text-xs italic mb-2 line-clamp-2 border-l-2 border-primary/50 pl-2">
                                     <span className="font-semibold not-italic">Passage: </span>{formatMarkdownText(q.context)}
                                   </p>
+                                )}
+                                {q.source && (
+                                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] bg-accent/10 text-accent-light mb-2">
+                                    Source: {q.source}
+                                  </span>
                                 )}
                                 <p className="text-text-primary text-sm font-medium mb-1">
                                   {formatMarkdownText(q.question_text)}

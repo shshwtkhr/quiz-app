@@ -3,6 +3,7 @@ export interface Question {
   _id: string;
   topic: string;
   subtopic?: string;
+  source?: string;
   context?: string;
   question_text: string;
   options: string[];

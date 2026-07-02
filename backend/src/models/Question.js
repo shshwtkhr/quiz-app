@@ -13,6 +13,11 @@ const questionSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    source: {
+      type: String,
+      trim: true,
+      index: true,
+    },
     context: {
       type: String,
       trim: true,
