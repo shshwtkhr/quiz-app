@@ -11,6 +11,9 @@ export default defineConfig({
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
     video: 'on', // Record video for all tests
+    launchOptions: {
+      slowMo: 500, // Slow down execution to make video half speed
+    },
   },
   projects: [
     {

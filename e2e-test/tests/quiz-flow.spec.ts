@@ -15,6 +15,37 @@ test.describe('QuizMaster Full E2E Flow', () => {
   });
 
   test('Complete flow: Upload -> Parse -> Edit -> Manage -> Play -> Results', async ({ page }) => {
+    // Inject CSS and JS for a visual mouse click ripple effect
+    await page.addInitScript(() => {
+      const style = document.createElement('style');
+      style.innerHTML = `
+        @keyframes e2e-ripple-anim {
+          0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+          100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+        }
+        .e2e-ripple {
+          position: fixed;
+          border-radius: 50%;
+          background-color: rgba(255, 0, 0, 0.5);
+          pointer-events: none;
+          z-index: 999999;
+          width: 30px;
+          height: 30px;
+          animation: e2e-ripple-anim 0.8s ease-out forwards;
+        }
+      `;
+      document.head.appendChild(style);
+
+      document.addEventListener('click', (e) => {
+        const ripple = document.createElement('div');
+        ripple.className = 'e2e-ripple';
+        ripple.style.left = e.clientX + 'px';
+        ripple.style.top = e.clientY + 'px';
+        document.body.appendChild(ripple);
+        setTimeout(() => ripple.remove(), 1000);
+      });
+    });
+
     // 1. Visit homepage
     await page.goto('/');
     await expect(page.locator('h1')).toContainText('QuizMaster');
@@ -150,7 +181,12 @@ test.describe('QuizMaster Full E2E Flow', () => {
     // Check if explanation is visible
     await expect(page.locator('p:has-text("Explanation")').first()).toBeVisible();
     
-    // HOLD the results page for 5 seconds so the video captures it clearly
-    await page.waitForTimeout(5000);
+    // HOLD the results page for 3 seconds so the video captures it clearly
+    await page.waitForTimeout(3000);
+
+    // 9. Return to Home Screen
+    await page.getByRole('button', { name: 'Take Another Quiz' }).click();
+    await expect(page.locator('h1')).toContainText('QuizMaster');
+    await page.waitForTimeout(2000); // Give the video a moment to capture the home screen
   });
 });
