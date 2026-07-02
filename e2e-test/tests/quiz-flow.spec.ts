@@ -15,36 +15,75 @@ test.describe('QuizMaster Full E2E Flow', () => {
   });
 
   test('Complete flow: Upload -> Parse -> Edit -> Manage -> Play -> Results', async ({ page }) => {
-    // Inject CSS and JS for a visual mouse click ripple effect
+    // Inject CSS and JS for a visual mouse click ripple effect and fake cursor
     await page.addInitScript(() => {
-      const style = document.createElement('style');
-      style.innerHTML = `
-        @keyframes e2e-ripple-anim {
-          0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
-          100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+      const initCursor = () => {
+        if (!document.head || !document.body) {
+          setTimeout(initCursor, 50);
+          return;
         }
-        .e2e-ripple {
-          position: fixed;
-          border-radius: 50%;
-          background-color: rgba(255, 0, 0, 0.6);
-          border: 2px solid red;
-          pointer-events: none;
-          z-index: 2147483647;
-          width: 30px;
-          height: 30px;
-          animation: e2e-ripple-anim 0.8s ease-out forwards;
-        }
-      `;
-      document.head.appendChild(style);
+        
+        if (document.getElementById('e2e-cursor-styles')) return;
 
-      window.addEventListener('mousedown', (e) => {
-        const ripple = document.createElement('div');
-        ripple.className = 'e2e-ripple';
-        ripple.style.left = e.clientX + 'px';
-        ripple.style.top = e.clientY + 'px';
-        document.body.appendChild(ripple);
-        setTimeout(() => ripple.remove(), 1000);
-      }, true); // Use capture phase to bypass stopPropagation
+        const style = document.createElement('style');
+        style.id = 'e2e-cursor-styles';
+        style.innerHTML = `
+          @keyframes e2e-ripple-anim {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+          }
+          .e2e-ripple {
+            position: fixed;
+            border-radius: 50%;
+            background-color: rgba(255, 0, 0, 0.6);
+            border: 2px solid red;
+            pointer-events: none;
+            z-index: 2147483647;
+            width: 30px;
+            height: 30px;
+            animation: e2e-ripple-anim 0.8s ease-out forwards;
+          }
+          .e2e-cursor {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            background: rgba(255, 0, 0, 0.4);
+            border: 2px solid red;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2147483646;
+            transform: translate(-50%, -50%);
+            transition: left 0.1s, top 0.1s;
+            display: none;
+          }
+        `;
+        document.head.appendChild(style);
+
+        const cursor = document.createElement('div');
+        cursor.className = 'e2e-cursor';
+        document.body.appendChild(cursor);
+
+        window.addEventListener('mousemove', (e) => {
+          cursor.style.display = 'block';
+          cursor.style.left = e.clientX + 'px';
+          cursor.style.top = e.clientY + 'px';
+        }, true);
+
+        window.addEventListener('mousedown', (e) => {
+          cursor.style.display = 'block';
+          cursor.style.left = e.clientX + 'px';
+          cursor.style.top = e.clientY + 'px';
+
+          const ripple = document.createElement('div');
+          ripple.className = 'e2e-ripple';
+          ripple.style.left = e.clientX + 'px';
+          ripple.style.top = e.clientY + 'px';
+          document.body.appendChild(ripple);
+          setTimeout(() => ripple.remove(), 1000);
+        }, true);
+      };
+      
+      initCursor();
     });
 
     // 1. Visit homepage
