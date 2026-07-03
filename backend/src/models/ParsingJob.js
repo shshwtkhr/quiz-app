@@ -15,6 +15,10 @@ const parsingJobSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    chunksMeta: {
+      type: Array,
+      default: [],
+    },
     parsedQuestions: {
       type: Array,
       default: [],

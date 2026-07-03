@@ -148,6 +148,7 @@ exports.uploadDocument = async (req, res, next) => {
          pages.forEach(page => subDocument.addPage(page));
          const pdfBytes = await subDocument.save();
          chunks.push({
+           pageRange: `${i + 1}-${end}`,
            inlineData: {
              data: Buffer.from(pdfBytes).toString("base64"),
              mimeType: "application/pdf"
@@ -171,10 +172,16 @@ exports.uploadDocument = async (req, res, next) => {
       }
     }
 
+    const chunksMeta = chunks.map((c, idx) => ({
+      chunkIndex: idx,
+      pageRange: c.pageRange || null
+    }));
+
     // 2. Create ParsingJob
     const job = await ParsingJob.create({
       status: 'processing',
       totalChunks: chunks.length,
+      chunksMeta: chunksMeta,
       progress: 0
     });
 
@@ -187,7 +194,7 @@ exports.uploadDocument = async (req, res, next) => {
     // 4. Start Background Process
     (async () => {
       let totalParsed = 0;
-      let allQuestions = [];
+      let resultsByChunk = new Array(chunks.length);
 
       const asyncBatch = async (items, limit, asyncCallback) => {
         let index = 0;
@@ -253,7 +260,7 @@ Text:
                    return q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
                 });
                 
-                allQuestions.push(...validQuestions);
+                resultsByChunk[currentIndex] = validQuestions;
                 totalParsed += validQuestions.length;
                 
                 // Update Job Progress
@@ -278,6 +285,8 @@ Text:
              throw lastError;
           }
         });
+
+        const allQuestions = resultsByChunk.flat().filter(Boolean);
 
         if (allQuestions.length === 0) {
           await ParsingJob.findByIdAndUpdate(job._id, { status: 'failed', error: 'Failed to extract any valid questions from the document.' });

@@ -63,13 +63,13 @@ export default function BulkEditModal({
               }}
               className="w-full px-3 py-2 bg-surface-dark border border-glass-border rounded-lg text-sm focus:border-primary text-text-primary appearance-none cursor-pointer"
             >
-              <option value="topic">Topic</option>
-              <option value="subtopic">Subtopic</option>
-              <option value="source">Source</option>
-              <option value="context">Context / Passage</option>
-              <option value="explanation">Explanation</option>
-              <option value="question_text">Question Text</option>
-              <option value="correct_answer">Correct Answer</option>
+              <option className="bg-surface text-text-primary" value="topic">Topic</option>
+              <option className="bg-surface text-text-primary" value="subtopic">Subtopic</option>
+              <option className="bg-surface text-text-primary" value="source">Source</option>
+              <option className="bg-surface text-text-primary" value="context">Context / Passage</option>
+              <option className="bg-surface text-text-primary" value="explanation">Explanation</option>
+              <option className="bg-surface text-text-primary" value="question_text">Question Text</option>
+              <option className="bg-surface text-text-primary" value="correct_answer">Correct Answer</option>
             </select>
           </div>
 
