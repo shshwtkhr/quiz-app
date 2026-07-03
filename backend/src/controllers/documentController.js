@@ -215,7 +215,7 @@ Text:
 `;
       
       try {
-        await asyncBatch(chunks, 3, async (chunk) => {
+        await asyncBatch(chunks, 3, async (chunk, currentIndex) => {
           if (typeof chunk === 'string' && !chunk.trim()) return;
           
           const contentsPayload = chunk.inlineData ? [promptBase, chunk] : promptBase + chunk;
