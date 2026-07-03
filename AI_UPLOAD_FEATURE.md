@@ -6,9 +6,10 @@ The Quiz Application is now equipped with cutting-edge AI capabilities! You can 
 
 - **Drag-and-Drop Modal**: A beautiful new glassmorphic modal on the home screen allows you to drag in `.pdf`, `.docx`, or `.txt` files.
 - **Smart Parsing Pipeline**: The backend routes the uploaded file through an extraction engine (`pdf-parse`, `mammoth`) to pull raw text natively without storing files on disk.
-- **Gemini Integration**: The raw text is streamed to Google's `gemini-2.5-flash` model, which uses a strict system prompt and schema constraint to generate a perfect JSON array of `[Topic, Question, Options, Answer, Explanation]`.
-- **Database Upsert**: The structured AI response is instantly validated and pushed to your MongoDB database using the bulk upsert logic to avoid duplicates.
-- **Reactive UI**: The moment the backend completes processing, the frontend's topic list updates in real-time to show your newly extracted questions!
+- **Resilient Background Processing**: The heavy AI extraction is offloaded to a background job. If you close the modal or even refresh the app, the job will continue, and the app will resume showing you progress when you open it next time!
+- **Gemini Integration**: The raw text is chunked and streamed to Google's `gemini-2.5-flash` model, which uses a strict system prompt and schema constraint to generate a perfect JSON array of `[Topic, Subtopic, Source, Context, Question, Options, Answer, Explanation]`.
+- **Database Upsert**: The structured AI response is instantly validated and pushed to your MongoDB database using bulk upsert logic to avoid duplicates.
+- **Reactive UI**: The moment the background job completes, the modal transitions to a powerful review screen where you can bulk edit topics, subtopics, and sources before saving!
 
 ## How to Test It
 

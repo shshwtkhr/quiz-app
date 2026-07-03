@@ -40,6 +40,14 @@ export default function QuizConfig() {
 
   useEffect(() => {
     loadTopics();
+    
+    // Check if there's an active upload job and auto-open the modal
+    if (typeof window !== 'undefined') {
+      const activeJobId = localStorage.getItem('activeUploadJobId');
+      if (activeJobId) {
+        setIsUploadModalOpen(true);
+      }
+    }
   }, []);
 
   const handleUploadSuccess = () => {

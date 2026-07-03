@@ -80,3 +80,38 @@ export async function uploadQuestions(data: unknown[]): Promise<unknown> {
   if (!res.ok) throw new Error('Failed to upload questions');
   return res.json();
 }
+
+/** Upload document for background parsing job */
+export async function uploadDocumentJob(file: File): Promise<{ jobId: string, message: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const res = await fetch(`${API_BASE}/upload-document`, {
+    method: 'POST',
+    body: formData,
+  });
+  
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to start document parsing job');
+  }
+  
+  return res.json();
+}
+
+/** Get status of a background parsing job */
+export async function getJobStatus(jobId: string): Promise<{
+  _id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  totalChunks: number;
+  parsedQuestions: any[];
+  error: string | null;
+}> {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}`, { cache: 'no-store' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to get job status');
+  }
+  return res.json();
+}

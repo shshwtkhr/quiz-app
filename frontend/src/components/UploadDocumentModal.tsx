@@ -1,6 +1,6 @@
 import { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 import { X, Upload, FileText, CheckCircle2, AlertCircle, Edit2, Plus, Trash2 } from 'lucide-react';
-import { uploadQuestions } from '@/lib/api';
+import { uploadQuestions, uploadDocumentJob, getJobStatus } from '@/lib/api';
 import { formatMarkdownText } from '@/lib/formatText';
 import BulkEditModal, { EditableField } from './BulkEditModal';
 
@@ -25,6 +25,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [existingTopics, setExistingTopics] = useState<TopicData[]>([]);
   const [existingSources, setExistingSources] = useState<string[]>([]);
   const [parsedCount, setParsedCount] = useState(0);
+  const [jobId, setJobId] = useState<string | null>(null);
   
   // Inline edit state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -48,15 +49,59 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
+  // Check for active job on mount
   useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    if (status === 'uploading') {
-      timeout = setTimeout(() => {
-        setStatus((prev) => (prev === 'uploading' ? 'parsing' : prev));
-      }, 1500);
+    if (isOpen && typeof window !== 'undefined') {
+      const activeJobId = localStorage.getItem('activeUploadJobId');
+      if (activeJobId) {
+        setJobId(activeJobId);
+        setStatus('parsing');
+      }
     }
-    return () => clearTimeout(timeout);
-  }, [status]);
+  }, [isOpen]);
+
+  // Polling mechanism
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout;
+
+    if (isOpen && status === 'parsing' && jobId) {
+      pollInterval = setInterval(async () => {
+        try {
+          const job = await getJobStatus(jobId);
+          setParsedCount(job.progress);
+
+          if (job.status === 'completed') {
+            clearInterval(pollInterval);
+            setParsedQuestions(job.parsedQuestions || []);
+            
+            // Fetch topics and sources for the review screen
+            try {
+              const topicsRes = await fetch('http://localhost:5000/api/topics');
+              if (topicsRes.ok) setExistingTopics(await topicsRes.json());
+              
+              const sourcesRes = await fetch('http://localhost:5000/api/sources');
+              if (sourcesRes.ok) setExistingSources(await sourcesRes.json());
+            } catch (e) {
+              console.error('Failed to fetch topics/sources', e);
+            }
+            
+            setStatus('review');
+          } else if (job.status === 'failed') {
+            clearInterval(pollInterval);
+            setStatus('error');
+            setErrorMessage(job.error || 'Parsing failed in background.');
+            localStorage.removeItem('activeUploadJobId');
+            setJobId(null);
+          }
+        } catch (error: any) {
+          console.error('Polling error:', error);
+          // Don't fail immediately on network error, keep polling until manual cancel
+        }
+      }, 2500);
+    }
+
+    return () => clearInterval(pollInterval);
+  }, [isOpen, status, jobId]);
 
   if (!isOpen) return null;
 
@@ -102,74 +147,14 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     if (!file) return;
 
     setStatus('uploading');
-    const formData = new FormData();
-    formData.append('file', file);
-
+    
     try {
-      const response = await fetch('http://localhost:5000/api/upload-document', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.error || 'Upload failed');
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Response stream not available');
+      const response = await uploadDocumentJob(file);
+      const newJobId = response.jobId;
       
-      const decoder = new TextDecoder();
-      let partial = '';
-      let finalQuestions: any[] = [];
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        partial += decoder.decode(value, { stream: true });
-        
-        const lines = partial.split('\n');
-        partial = lines.pop() || '';
-        
-        for (const line of lines) {
-          if (line.trim()) {
-             try {
-                const data = JSON.parse(line);
-                if (data.type === 'error') {
-                   throw new Error(data.error);
-                } else if (data.type === 'progress') {
-                   setParsedCount(data.parsedSoFar);
-                } else if (data.type === 'complete') {
-                   finalQuestions = data.questions || [];
-                }
-             } catch(err: any) {
-                if (line.includes('"type":"error"')) {
-                   const errorMatch = line.match(/"error":"([^"]+)"/);
-                   if (errorMatch) throw new Error(errorMatch[1]);
-                }
-             }
-          }
-        }
-      }
-
-      setParsedQuestions(finalQuestions);
-
-      try {
-        const topicsRes = await fetch('http://localhost:5000/api/topics');
-        if (topicsRes.ok) {
-          const topicsData = await topicsRes.json();
-          setExistingTopics(topicsData);
-        }
-        const sourcesRes = await fetch('http://localhost:5000/api/sources');
-        if (sourcesRes.ok) {
-          const sourcesData = await sourcesRes.json();
-          setExistingSources(sourcesData);
-        }
-      } catch (e) {
-        console.error('Failed to fetch existing topics/sources', e);
-      }
-
-      setStatus('review');
+      setJobId(newJobId);
+      localStorage.setItem('activeUploadJobId', newJobId);
+      setStatus('parsing');
     } catch (error: any) {
       setStatus('error');
       setErrorMessage(error.message || 'An error occurred during upload.');
@@ -224,6 +209,8 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
       }
 
       setStatus('success');
+      localStorage.removeItem('activeUploadJobId');
+      
       setTimeout(() => {
         onSuccess();
         onClose();
@@ -245,6 +232,12 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setSelectedQuestions(new Set());
     setEditingIndex(null);
     setEditFormData(null);
+    setJobId(null);
+  };
+
+  const handleCancelParsing = () => {
+    localStorage.removeItem('activeUploadJobId');
+    resetState();
   };
 
   const handleEditClick = (index: number, q: any) => {
@@ -276,6 +269,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   };
 
   const handleClose = () => {
+    // Only clear storage if we close explicitly while not parsing
+    if (status !== 'parsing') {
+      localStorage.removeItem('activeUploadJobId');
+    }
     resetState();
     onClose();
   };
@@ -296,15 +293,14 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
       
       <div className={`relative w-full ${status === 'review' ? 'max-w-2xl' : 'max-w-md'} bg-surface glass-card p-6 shadow-2xl animate-slide-up transition-all duration-300 border-glass-border border-2 flex flex-col max-h-[90vh]`}>
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-text-primary">Upload Document</h2>
+          <h2 className="text-xl font-bold text-text-primary">
+            {jobId && status === 'parsing' ? 'Resuming Parsing...' : 'Upload Document'}
+          </h2>
           <button 
             onClick={handleClose}
             className="text-text-muted hover:text-text-primary transition-colors"
-            disabled={status === 'uploading' || status === 'parsing'}
           >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="w-6 h-6" />
           </button>
         </div>
 
@@ -329,7 +325,6 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
               </p>
             </div>
 
-            {/* Bulk Action Bar */}
             {selectedQuestions.size > 0 && (
               <div className="p-3 mb-4 rounded-xl border border-primary/30 bg-primary/10 flex flex-wrap gap-3 items-center animate-fade-in">
                 <span className="text-primary font-medium text-sm whitespace-nowrap">{selectedQuestions.size} selected</span>
@@ -616,10 +611,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
             
             <div className="mt-6 pt-4 border-t border-glass-border flex gap-3 shrink-0">
               <button
-                onClick={() => setStatus('idle')}
+                onClick={handleCancelParsing}
                 className="flex-1 py-2.5 rounded-lg border border-glass-border text-text-primary hover:bg-surface-light transition-colors font-medium"
               >
-                Back
+                Discard & Close
               </button>
               <button
                 onClick={handleSave}
@@ -651,9 +646,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
               />
               
               <div className="mb-4 flex justify-center">
-                <svg className={`w-12 h-12 ${isDragging ? 'text-primary' : 'text-text-muted'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
+                <Upload className={`w-12 h-12 ${isDragging ? 'text-primary' : 'text-text-muted'}`} />
               </div>
               
               {file ? (
@@ -687,7 +680,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                 disabled={!file}
                 className="flex-1 btn-primary py-2.5 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Upload
+                Upload & Process
               </button>
             </div>
           </>
@@ -696,12 +689,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
             {status === 'success' ? (
               <div className="animate-fade-in flex flex-col items-center">
                 <div className="w-16 h-16 bg-success/20 text-success rounded-full flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <h3 className="text-xl font-semibold text-text-primary">Upload Complete!</h3>
-                <p className="text-text-muted mt-2">Questions have been generated.</p>
+                <p className="text-text-muted mt-2">Questions have been generated and saved.</p>
               </div>
             ) : (
               <div className="animate-fade-in flex flex-col items-center">
@@ -711,22 +702,24 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                    <FileText className="w-6 h-6 text-primary" />
                   </div>
                 </div>
                 <h3 className="text-xl font-semibold text-text-primary">
                   {status === 'uploading' ? 'Uploading Document...' : status === 'saving' ? 'Saving Questions...' : `AI is parsing questions... (Found: ${parsedCount})`}
                 </h3>
-                <p className="text-text-muted mt-2">This might take a few moments for large documents</p>
+                <p className="text-text-muted mt-2 text-sm max-w-sm">
+                  {status === 'parsing' ? 'You can safely close this modal or app; parsing will continue in the background.' : 'Please wait...'}
+                </p>
                 
-                <div className="w-full h-2 bg-surface-light rounded-full mt-6 overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all duration-[3000ms] ease-out"
-                    style={{ width: status === 'uploading' ? '40%' : status === 'saving' ? '90%' : '70%' }}
-                  />
-                </div>
+                {status === 'parsing' && (
+                  <button 
+                    onClick={handleClose}
+                    className="mt-6 px-4 py-2 border border-glass-border rounded-lg text-sm hover:bg-surface-light text-text-primary transition"
+                  >
+                    Hide Progress (Run in Background)
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -744,4 +737,3 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     </div>
   );
 }
-
