@@ -1,6 +1,6 @@
 # QuizMaster — Technical Documentation
 
-> **Version:** 1.0.0  
+> **Version:** 1.1.0  
 > **License:** MIT — Copyright © 2026 Shashwat Khare  
 > **Last Updated:** July 2026
 
@@ -36,16 +36,17 @@
 
 ## 1. System Overview
 
-QuizMaster is a full-stack quiz application that combines manual question management with AI-powered document parsing. Users can upload PDF, DOCX, or TXT files and let Google's Gemini AI automatically extract structured quiz questions — complete with topics, subtopics, options, answers, and explanations. The application also supports manual question CRUD, dynamic quiz generation with configurable parameters, timed quiz-taking, and detailed results review.
+QuizMaster is a full-stack quiz application that combines manual question management with AI-powered document parsing. Users can upload PDF, DOCX, or TXT files and let Google's Gemini AI automatically extract structured quiz questions — complete with topics, subtopics, sources, options, answers, and explanations. The application also supports manual question CRUD, multi-select bulk editing, dynamic quiz generation with configurable parameters, timed quiz-taking, and detailed results review.
 
 ### Key Capabilities
 
 | Capability | Description |
 |---|---|
-| **AI Document Parsing** | Upload documents → Gemini AI extracts structured questions with topics, subtopics, and explanations |
+| **AI Document Parsing** | Upload documents → Gemini AI extracts structured questions with topics, subtopics, sources, and explanations |
+| **Background Job Processing** | Document parsing runs as an async background job with status polling — survives modal close and page refresh |
 | **Smart Formatting** | Preserves markdown bold/italic formatting from source PDFs |
-| **Streaming Progress** | Real-time NDJSON streaming during AI processing with progress indicators |
-| **Question Management** | Full CRUD operations: create, search, inline-edit, bulk-delete, grouped views |
+| **Multi-Select Bulk Edit** | Select multiple questions and update any field (topic, subtopic, source, context, explanation, etc.) in one operation |
+| **Question Management** | Full CRUD operations: create, search, inline-edit, bulk-edit, bulk-delete, grouped views |
 | **Dynamic Quiz Generation** | Select topics, set question counts per topic, configure time limits |
 | **Timed Quiz Engine** | Sequential question navigation, countdown timer, auto-submit on timeout |
 | **Results Analytics** | Score percentage, circular progress ring, per-question detailed review |
@@ -82,7 +83,8 @@ graph TB
     Routes --> QCtrl
     Routes --> DCtrl
     DCtrl --> Multer
-    DCtrl -->|"Streaming NDJSON"| API_Client
+    DCtrl -->|"202 + Job ID"| API_Client
+    API_Client -->|"Poll GET /jobs/:id"| Routes
     QCtrl --> MongoDB
     DCtrl --> Gemini
     DCtrl --> MongoDB
@@ -124,12 +126,15 @@ sequenceDiagram
     Note over U,DB: AI Document Upload Flow
     U->>F: Drops file in upload modal
     F->>B: POST /api/upload-document (multipart)
-    B->>B: Extract text (pdf-parse / mammoth)
+    B-->>F: 202 { jobId }
+    B->>B: Background: Extract text
     B->>AI: Send chunks to Gemini
     AI-->>B: Structured JSON questions
-    B-->>F: Stream NDJSON { progress, complete }
+    B->>DB: Update ParsingJob status
+    F->>B: Poll GET /api/jobs/:jobId (every 2.5s)
+    B-->>F: { status, progress, parsedQuestions }
     F->>U: Show parsed questions for review
-    U->>F: Edit / assign topics / save
+    U->>F: Bulk edit / assign topics / save
     F->>B: POST /api/upload-questions
     B->>DB: bulkWrite (upsert)
 ```
@@ -139,7 +144,7 @@ sequenceDiagram
 1. **Separation of Concerns** — Entry point → App factory → Routes → Controllers → Models
 2. **Answer Security** — Quiz generation strips answers from questions; answers sent in a separate `answerKey` object
 3. **Deduplication** — Compound unique index on `{ topic, subtopic, question_text }` prevents duplicate questions
-4. **Streaming for UX** — Long-running AI operations use NDJSON streaming for real-time progress
+4. **Async Job Processing** — Long-running AI operations run as background jobs with status polling for reliable progress tracking
 5. **AI Model Resilience** — Dynamic model discovery with scoring, sorting, and automatic fallback on rate limits
 6. **SSR-Safe State** — Zustand vanilla store + React context provider pattern for Next.js App Router compatibility
 
@@ -196,7 +201,8 @@ quiz-app/
 │   │   │   └── documentController.js # AI document parsing pipeline
 │   │   ├── models/
 │   │   │   ├── Question.js           # Question schema & model
-│   │   │   └── Config.js             # Key-value config model
+│   │   │   ├── Config.js             # Key-value config model
+│   │   │   └── ParsingJob.js         # Background parsing job model
 │   │   └── routes/
 │   │       └── questionRoutes.js     # Route definitions + multer
 │   ├── tests/
@@ -229,6 +235,7 @@ quiz-app/
 │   │   │   ├── Timer.tsx             # Countdown timer
 │   │   │   ├── ResultsReview.tsx     # Post-quiz results & review
 │   │   │   ├── QuestionListManager.tsx  # Reusable question CRUD list
+│   │   │   ├── BulkEditModal.tsx     # Multi-select bulk edit modal
 │   │   │   ├── UploadDocumentModal.tsx  # AI document upload modal
 │   │   │   └── ManageTopicModal.tsx  # Per-topic management modal
 │   │   ├── stores/
@@ -241,10 +248,6 @@ quiz-app/
 │   │       └── formatText.tsx       # Markdown text formatter
 │   ├── __tests__/
 │   │   └── QuizEngine.test.tsx      # Component unit tests
-│   ├── e2e/
-│   │   ├── quiz-flow.spec.ts        # Playwright E2E tests
-│   │   └── test-files/              # Test fixture files
-│   ├── playwright.config.ts
 │   ├── jest.config.ts
 │   ├── jest.setup.ts
 │   ├── next.config.ts
@@ -253,11 +256,21 @@ quiz-app/
 │   └── package.json
 │
 ├── e2e-test/
+│   ├── tests/
+│   │   ├── quiz-flow.spec.ts        # Playwright E2E test suite
+│   │   └── test-files/              # Test fixture files
+│   ├── scripts/
+│   │   └── cleanup-e2e.js           # E2E test data cleanup
+│   ├── playwright.config.ts         # Playwright configuration
 │   ├── record.js                    # Puppeteer visual E2E recorder
 │   ├── test-comprehension.js        # Comprehension flow test
 │   ├── test-volume.js               # Volume testing
 │   ├── test-files/                  # Test fixture files
 │   └── package.json
+│
+├── docs/
+│   ├── TECHNICAL_DOCUMENTATION.md   # This file
+│   └── USER_MANUAL.md               # End-user guide
 │
 ├── .gitignore
 ├── README.md
@@ -326,6 +339,7 @@ const connectDB = require('./src/config/db');
 |---|---|---|---|---|
 | `topic` | `String` | ✅ | `trim: true` | Single-field index |
 | `subtopic` | `String` | ❌ | `trim: true` | Single-field index |
+| `source` | `String` | ❌ | `trim: true` | Single-field index |
 | `context` | `String` | ❌ | `trim: true` | — |
 | `question_text` | `String` | ✅ | `trim: true` | Part of compound unique index |
 | `options` | `[String]` | ✅ | Min 2 items | — |
@@ -338,6 +352,24 @@ const connectDB = require('./src/config/db');
 
 > [!NOTE]
 > The `subtopic` field defaults to `'General'` during upsert operations if not provided, ensuring the compound index always has a value for deduplication.
+
+#### ParsingJob Model
+
+[ParsingJob.js](file:///e:/Projects/quiz-app/backend/src/models/ParsingJob.js) — Tracks the status of background document parsing jobs.
+
+**Schema:**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `status` | `String` | `'pending'` | Enum: `pending`, `processing`, `completed`, `failed` |
+| `progress` | `Number` | `0` | Count of questions parsed so far |
+| `totalChunks` | `Number` | `0` | Total number of document chunks to process |
+| `parsedQuestions` | `Array` | `[]` | Parsed question objects (populated on completion) |
+| `error` | `String` | `null` | Error message (populated on failure) |
+| `createdAt` | `Date` | Auto | `timestamps: true` |
+| `updatedAt` | `Date` | Auto | `timestamps: true` |
+
+**Lifecycle:** Created when a document is uploaded. Updated during processing with `progress` counts. Finalized with `status: 'completed'` + `parsedQuestions` or `status: 'failed'` + `error`.
 
 #### Config Model
 
@@ -370,6 +402,7 @@ Bulk upsert questions into the database.
   {
     "topic": "Mathematics",
     "subtopic": "Algebra",
+    "source": "Chapter 3 — Textbook",
     "context": "Optional passage or context for the question",
     "question_text": "What is 2 + 2?",
     "options": ["3", "4", "5", "6"],
@@ -402,7 +435,7 @@ Bulk upsert questions into the database.
 
 #### `POST /api/upload-document`
 
-Upload a document file for AI-powered question extraction. Returns a **streaming NDJSON response**.
+Upload a document file for AI-powered question extraction. Returns immediately with a job ID for background processing.
 
 **Controller:** [documentController.uploadDocument](file:///e:/Projects/quiz-app/backend/src/controllers/documentController.js)
 
@@ -410,29 +443,55 @@ Upload a document file for AI-powered question extraction. Returns a **streaming
 
 **Supported File Types:** `.pdf`, `.docx`, `.txt`
 
-**Response:** `Content-Type: application/x-ndjson`, `Transfer-Encoding: chunked`
-
-**Stream Event Types:**
-
-| Event | Fields | Description |
-|---|---|---|
-| `ping` | — | Keep-alive signal, sent every 15 seconds |
-| `progress` | `parsedSoFar: number` | Questions parsed so far after each chunk |
-| `complete` | `message: string`, `questions: Question[]` | Final parsed results |
-| `error` | `error: string` | Error message |
-
-**Example Stream:**
+**Response `202` (Accepted):**
+```json
+{
+  "message": "Document accepted for processing",
+  "jobId": "668a1b2c3d4e5f6789012345"
+}
 ```
-{"type":"ping"}
-{"type":"progress","parsedSoFar":12}
-{"type":"progress","parsedSoFar":25}
-{"type":"complete","message":"Successfully parsed 25 questions","questions":[...]}
-```
+
+The frontend then polls `GET /api/jobs/:jobId` to track progress and retrieve results.
 
 **Errors:** `400` for unsupported file types or empty documents. `500` for missing API key.
 
 > [!IMPORTANT]
 > See [Section 5.6: Document Processing Pipeline](#56-document-processing-pipeline) for detailed technical breakdown.
+
+---
+
+#### `GET /api/jobs/:jobId`
+
+Check the status of a background document parsing job.
+
+**Controller:** [documentController.getJobStatus](file:///e:/Projects/quiz-app/backend/src/controllers/documentController.js)
+
+**URL Parameter:** `jobId` — MongoDB ObjectId of the ParsingJob
+
+**Response `200`:**
+```json
+{
+  "_id": "668a1b2c3d4e5f6789012345",
+  "status": "completed",
+  "progress": 25,
+  "totalChunks": 3,
+  "parsedQuestions": [ ... ],
+  "error": null,
+  "createdAt": "2026-07-01T00:00:00.000Z",
+  "updatedAt": "2026-07-01T00:01:00.000Z"
+}
+```
+
+**Status values:**
+
+| Status | Meaning |
+|---|---|
+| `pending` | Job created, not yet started |
+| `processing` | AI is actively parsing document chunks |
+| `completed` | All chunks processed; `parsedQuestions` populated |
+| `failed` | Processing failed; `error` field contains details |
+
+**Errors:** `404` if job not found.
 
 ---
 
@@ -452,19 +511,26 @@ Retrieve all topics with question counts and subtopic breakdown.
       { "name": "Algebra", "count": 20 },
       { "name": "Calculus", "count": 25 }
     ]
-  },
-  {
-    "_id": "Science",
-    "count": 30,
-    "subtopics": [
-      { "name": "Physics", "count": 15 },
-      { "name": "Chemistry", "count": 15 }
-    ]
   }
 ]
 ```
 
 **Implementation:** Two-stage MongoDB aggregation — first groups by `{ topic, subtopic }` with count, then re-groups by topic, summing counts and collecting subtopics. Sorted alphabetically by topic name.
+
+---
+
+#### `GET /api/sources`
+
+Retrieve all distinct, non-empty source values.
+
+**Controller:** [questionController.getSources](file:///e:/Projects/quiz-app/backend/src/controllers/questionController.js)
+
+**Response `200`:**
+```json
+["Chapter 1 — Biology", "Lecture Notes", "Practice Exam 2"]
+```
+
+**Implementation:** Uses `Question.distinct('source')`, filters out null/undefined/empty strings, sorts alphabetically.
 
 ---
 
@@ -494,6 +560,7 @@ Generate a randomized quiz from selected topics.
       "_id": "665a...",
       "topic": "Mathematics",
       "subtopic": "Algebra",
+      "source": "Chapter 3",
       "context": "Optional context passage",
       "question_text": "What is x if 2x = 10?",
       "options": ["3", "4", "5", "6"]
@@ -538,7 +605,7 @@ Search questions across all fields.
 
 **Behavior:**
 - If `q` is empty/undefined: returns **all** questions, sorted by `{ topic: 1, subtopic: 1 }`
-- Otherwise: case-insensitive regex search across `question_text`, `options`, `explanation`, `correct_answer`, `topic`, `subtopic`
+- Otherwise: case-insensitive regex search across `question_text`, `options`, `explanation`, `correct_answer`, `topic`, `subtopic`, `source`
 
 **Response `200`:** Array of matching question documents.
 
@@ -557,6 +624,7 @@ Update a single question by ID.
 ```json
 {
   "question_text": "Updated question text",
+  "source": "New Source Tag",
   "options": ["Option A", "Option B", "Option C"]
 }
 ```
@@ -564,6 +632,40 @@ Update a single question by ID.
 **Response `200`:** Updated full question document.
 
 **Errors:** `404` if question not found.
+
+---
+
+#### `PUT /api/questions/bulk`
+
+Bulk update multiple questions with the same field values.
+
+**Controller:** [questionController.bulkUpdateQuestions](file:///e:/Projects/quiz-app/backend/src/controllers/questionController.js)
+
+**Request Body:**
+```json
+{
+  "ids": ["665a...", "665b...", "665c..."],
+  "updateData": {
+    "topic": "New Topic Name",
+    "source": "Shared Source"
+  }
+}
+```
+
+**Validation:**
+- `ids` must be a non-empty array
+- `updateData` must be a non-empty object
+
+**Response `200`:**
+```json
+{
+  "message": "X questions updated successfully",
+  "modifiedCount": 3
+}
+```
+
+> [!NOTE]
+> The `/questions/bulk` route is registered BEFORE `/questions/:id` in the router to prevent Express from matching "bulk" as a question ID.
 
 ---
 
@@ -608,13 +710,13 @@ Health check endpoint.
 
 ### 5.6. Document Processing Pipeline
 
-The document upload pipeline in [documentController.js](file:///e:/Projects/quiz-app/backend/src/controllers/documentController.js) is the most complex backend component. Here is a step-by-step breakdown:
+The document upload pipeline in [documentController.js](file:///e:/Projects/quiz-app/backend/src/controllers/documentController.js) is the most complex backend component. It uses an **async background job pattern** — the upload endpoint returns immediately with a job ID, and processing happens asynchronously.
 
 ```mermaid
 flowchart TD
     A["File Upload (multer)"] --> B{File Type?}
     B -->|PDF| C["pdf-parse with<br/>formatting preservation"]
-    B -->|DOCX| D["mammoth.convertToHtml()"]
+    B -->|DOCX| D["mammoth.extractRawText()"]
     B -->|TXT| E["buffer.toString('utf8')"]
     B -->|Other| F["400 Error"]
 
@@ -622,8 +724,10 @@ flowchart TD
     G -->|No — Image PDF| H["pdf-lib: Split into<br/>5-page sub-documents"]
     G -->|Yes| I["Split text into<br/>15K char chunks"]
     
-    H --> J["Concurrent AI Processing<br/>(3 workers)"]
-    I --> J
+    H --> J0["Create ParsingJob<br/>(status: processing)"]
+    I --> J0
+    J0 --> J0b["Return 202 + jobId"]
+    J0b --> J["Background: Concurrent AI<br/>Processing (3 workers)"]
 
     J --> K["Gemini API per chunk<br/>(structured JSON output)"]
     K --> L{API Error?}
@@ -631,9 +735,9 @@ flowchart TD
     L -->|Success| N["Post-validate questions"]
     M --> K
 
-    N --> O["Stream progress NDJSON"]
+    N --> O["Update ParsingJob.progress"]
     O --> P["Aggregate all questions"]
-    P --> Q["Stream complete event"]
+    P --> Q["Update ParsingJob<br/>(status: completed)"]
 ```
 
 #### Step 1: API Key Resolution
@@ -644,7 +748,7 @@ The controller first checks the MongoDB `Config` collection for a stored `GEMINI
 | Format | Library | Details |
 |---|---|---|
 | **PDF** | `pdf-parse` | Custom `render_page` function preserves **bold** (`**`) and *italic* (`*`) markdown formatting by inspecting font names. Detects image-only PDFs (zero text extracted). |
-| **DOCX** | `mammoth` | Converts to HTML via `convertToHtml()`. |
+| **DOCX** | `mammoth` | Extracts raw text via `extractRawText()`. |
 | **TXT** | Native | Direct `buffer.toString('utf8')`. |
 
 #### Step 3: Document Chunking
@@ -652,7 +756,11 @@ The controller first checks the MongoDB `Config` collection for a stored `GEMINI
 - **Image PDFs:** Uses `pdf-lib` to split into sub-documents of **max 5 pages each**. Each sub-document is sent as base64-encoded binary (`inlineData`) to Gemini.
 - **Text documents:** Splits by paragraph boundaries (double newlines), accumulates into chunks of **max 15,000 characters**.
 
-#### Step 4: AI Model Selection
+#### Step 4: Job Creation & Immediate Response
+
+A `ParsingJob` document is created in MongoDB with `status: 'processing'` and `totalChunks` set. The endpoint immediately returns `202 Accepted` with the `jobId`. All subsequent processing happens in a fire-and-forget async IIFE.
+
+#### Step 5: AI Model Selection
 
 The `getAvailableModels()` function dynamically discovers available Gemini models and scores them:
 
@@ -668,30 +776,28 @@ The `getAvailableModels()` function dynamically discovers available Gemini model
 
 Results are cached for **1 hour**. On API failure, falls back to hardcoded list: `gemini-2.5-pro`, `gemini-1.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`.
 
-#### Step 5: Concurrent Processing
+#### Step 6: Concurrent Processing
 
 Uses a custom `asyncBatch(items, limit=3, callback)` concurrency limiter — processes up to **3 chunks simultaneously**.
 
-#### Step 6: Gemini API Call
+#### Step 7: Gemini API Call
 
 Each chunk is sent with:
 - **Structured output** (`responseMimeType: 'application/json'`) with a response schema requiring: `topic`, `subtopic`, `question_text`, `options`, `correct_answer`, `explanation`, and optional `context`.
 - **Model fallback:** On `429` (rate limit), `503` (service unavailable), or `404` (model not found) errors, automatically tries the next model in the scored list.
 
-#### Step 7: Post-Validation
+#### Step 8: Post-Validation
 
 Each extracted question is validated:
 - All required fields must be present and non-empty
 - `options` must be an array with ≥ 2 items
 - `correct_answer` must match one of the provided `options`
 
-#### Step 8: NDJSON Streaming
+#### Step 9: Job Status Updates
 
-Throughout the process, progress events are streamed to the client:
-- `{ type: 'ping' }` — every 15 seconds (keep-alive)
-- `{ type: 'progress', parsedSoFar: N }` — after each chunk completes
-- `{ type: 'complete', message: '...', questions: [...] }` — final result
-- `{ type: 'error', error: '...' }` — on failure
+After each chunk completes, the `ParsingJob.progress` field is updated with the running count of parsed questions. On completion, the job transitions to `status: 'completed'` with `parsedQuestions` populated. On failure, `status: 'failed'` with an `error` message.
+
+The frontend polls `GET /api/jobs/:jobId` every 2.5 seconds to check progress and retrieve results.
 
 ### 5.7. Error Handling
 
@@ -702,7 +808,7 @@ Throughout the process, progress events are streamed to the client:
 - Returns `500 { error: 'Internal server error' }`
 - In `development` mode (`NODE_ENV=development`), also includes `message: err.message` in the response
 
-**Streaming Error Handling:** When headers have already been sent (during NDJSON streaming), errors are written as `{ type: 'error' }` events and the stream is ended.
+**Background Job Error Handling:** Errors during background processing update the `ParsingJob` document with `status: 'failed'` and the error message, allowing the frontend to display the error to the user on the next poll.
 
 **Validation Errors:** Return `400` with descriptive error messages.
 
@@ -738,6 +844,7 @@ graph TD
     QC --> UDM["UploadDocumentModal"]
     QC --> MTM["ManageTopicModal"]
     MTM --> QLM1["QuestionListManager"]
+    QLM1 --> BEM1["BulkEditModal"]
 
     Quiz --> QE["QuizEngine"]
     QE --> QCard["QuestionCard"]
@@ -746,6 +853,9 @@ graph TD
     Results --> RR["ResultsReview"]
 
     Manage --> QLM2["QuestionListManager"]
+    QLM2 --> BEM2["BulkEditModal"]
+
+    UDM --> BEM3["BulkEditModal"]
 ```
 
 #### QuizConfig
@@ -827,6 +937,32 @@ graph TD
   - Explanation card with accent styling
 - "Take New Quiz" button (resets store, navigates to `/`)
 
+#### BulkEditModal
+
+[BulkEditModal.tsx](file:///e:/Projects/quiz-app/frontend/src/components/BulkEditModal.tsx) — Portal-rendered modal for bulk field editing.
+
+**Exported Type:** `EditableField = 'topic' | 'subtopic' | 'source' | 'context' | 'explanation' | 'question_text' | 'correct_answer'`
+
+**Props:**
+
+| Prop | Type | Description |
+|---|---|---|
+| `isOpen` | `boolean` | Controls visibility |
+| `onClose` | `() => void` | Close callback |
+| `onApply` | `(field: EditableField, value: string) => void` | Applies the edit to all selected questions |
+| `selectedCount` | `number` | Number of selected questions (displayed in UI) |
+| `existingTopics` | `string[]` | Autocomplete suggestions for topic field |
+| `existingSources` | `string[]` | Autocomplete suggestions for source field |
+
+**Features:**
+- Renders via `createPortal` to `document.body` at `z-[60]` (above other modals)
+- Field selector dropdown with 7 editable fields
+- Conditional input: `<input>` with `<datalist>` for short fields (topic, subtopic, source, correct_answer), `<textarea>` for long fields (context, explanation, question_text)
+- Autocomplete from existing topics/sources via datalist
+- Cancel and "Apply to All" buttons
+
+**Used by:** `QuestionListManager` (for managing existing DB questions) and `UploadDocumentModal` (for reviewing parsed questions before save).
+
 #### QuestionListManager
 
 [QuestionListManager.tsx](file:///e:/Projects/quiz-app/frontend/src/components/QuestionListManager.tsx) — Reusable CRUD component for question management.
@@ -837,22 +973,25 @@ graph TD
 |---|---|---|
 | `questions` | `QuestionData[]` | Questions to display |
 | `onDelete` | `(ids: string[]) => Promise<void>` | Delete callback |
-| `onUpdate` | `(id: string, data: Partial<QuestionData>) => Promise<void>` | Update callback |
+| `onUpdate` | `(id: string, data: Partial<QuestionData>) => Promise<void>` | Single-question update callback |
+| `onBulkUpdate` | `(ids: string[], data: Partial<QuestionData>) => Promise<void>` | **Optional.** Bulk update callback — when provided, enables the Bulk Edit button |
 | `groupByTopic` | `boolean` | Whether to group by topic/subtopic headers |
 | `isLoading` | `boolean` | Loading state |
 
 **Features:**
-- Text search filtering across all question fields
+- Text search filtering across all question fields (including `source`)
 - Select all / individual checkbox selection
+- **Bulk Edit** with `BulkEditModal` (visible when `onBulkUpdate` is provided and items are selected)
 - Bulk delete with confirmation dialog
-- Inline edit mode (topic, subtopic, context, question, options, correct answer, explanation)
-- Expand/collapse detail views
+- Inline edit mode (topic, subtopic, source with datalist, context, question, options, correct answer, explanation)
+- Expand/collapse detail views with source badges
 - Grouped display by topic → subtopic (with sticky headers)
 - "Uncategorized in Database" badge for questions without subtopics
+- Fetches existing sources from `GET /api/sources` on mount for datalist autocomplete
 
 #### UploadDocumentModal
 
-[UploadDocumentModal.tsx](file:///e:/Projects/quiz-app/frontend/src/components/UploadDocumentModal.tsx) — Full-featured AI document upload modal (727 lines).
+[UploadDocumentModal.tsx](file:///e:/Projects/quiz-app/frontend/src/components/UploadDocumentModal.tsx) — Full-featured AI document upload modal (740 lines).
 
 **Props:**
 
@@ -868,10 +1007,12 @@ graph TD
 stateDiagram-v2
     [*] --> idle
     idle --> uploading: File selected + Upload click
-    uploading --> parsing: Server received, AI processing
-    parsing --> review: Questions parsed
-    parsing --> error: AI parsing failed
-    review --> saving: Save All clicked
+    uploading --> parsing: Server returns 202 + jobId
+    parsing --> review: Job status = completed
+    parsing --> error: Job status = failed
+    parsing --> idle: User closes modal (job continues in background)
+    idle --> parsing: Modal reopened with active jobId in localStorage
+    review --> saving: Save Questions clicked
     saving --> success: Questions saved
     saving --> error: Save failed
     success --> [*]: Auto-close (1.5s)
@@ -880,12 +1021,14 @@ stateDiagram-v2
 
 **Features:**
 - Drag-and-drop file zone with visual feedback
-- Streaming progress parsing (NDJSON)
+- **Background job processing** — upload returns `202` with `jobId`, frontend polls every 2.5s
+- **Job persistence** — `jobId` stored in `localStorage`, survives modal close and page refresh
+- **"Hide Progress" button** — allows closing modal while parsing continues
 - Full question review interface with:
-  - Per-question topic/subtopic dropdowns (existing topics + "Create New")
-  - Inline editing (context, question, options with add/remove, correct answer, explanation)
+  - Per-question topic/subtopic/source dropdowns (existing values + "Create New")
+  - Inline editing (source, context, question, options with add/remove, correct answer, explanation)
   - Drag-to-select for bulk operations
-  - Bulk topic/subtopic assignment
+  - **BulkEditModal** integration for multi-field bulk editing
   - Bulk delete
 - Success animation with auto-close
 
@@ -901,7 +1044,7 @@ stateDiagram-v2
 | `onClose` | `() => void` | Close callback |
 | `topic` | `string` | Topic to manage |
 
-Wraps `QuestionListManager` with `groupByTopic={false}`, fetching questions via `fetchQuestionsByTopic()`.
+Wraps `QuestionListManager` with `groupByTopic={false}`, fetching questions via `fetchQuestionsByTopic()`. Supports all operations including **bulk update** via `onBulkUpdate`.
 
 ---
 
@@ -954,6 +1097,7 @@ interface Question {
   _id: string;
   topic: string;
   subtopic?: string;
+  source?: string;
   context?: string;
   question_text: string;
   options: string[];
@@ -1002,11 +1146,11 @@ interface TopicSelection {
 | `searchQuestions(query)` | GET | `/questions/search?q={query}` | `Promise<QuestionData[]>` |
 | `deleteQuestions(ids)` | DELETE | `/questions` | `Promise<{ message, deletedCount }>` |
 | `updateQuestion(id, data)` | PUT | `/questions/{id}` | `Promise<QuestionData>` |
+| `bulkUpdateQuestions(ids, data)` | PUT | `/questions/bulk` | `Promise<{ message, modifiedCount }>` |
 | `generateQuiz(topics)` | POST | `/generate-quiz` | `Promise<{ questions, answerKey, totalQuestions }>` |
 | `uploadQuestions(data)` | POST | `/upload-questions` | `Promise<unknown>` |
-
-> [!NOTE]
-> The `UploadDocumentModal` makes its own direct `fetch` calls for document upload and NDJSON streaming, bypassing this module.
+| `uploadDocumentJob(file)` | POST | `/upload-document` | `Promise<{ jobId, message }>` |
+| `getJobStatus(jobId)` | GET | `/jobs/{jobId}` | `Promise<ParsingJob>` |
 
 ### 6.6. Design System
 
@@ -1109,29 +1253,56 @@ npm run test
 
 ### 8.3. E2E Tests (Playwright)
 
-**Configuration:** [playwright.config.ts](file:///e:/Projects/quiz-app/frontend/playwright.config.ts)
+The primary E2E testing suite lives in the `e2e-test/` directory at the project root.
+
+**Configuration:** [playwright.config.ts](file:///e:/Projects/quiz-app/e2e-test/playwright.config.ts)
 
 | Setting | Value |
 |---|---|
 | Browser | Chromium (Desktop Chrome) |
 | Base URL | `http://localhost:3000` |
-| Video | On |
+| Video | On (all tests) |
 | Trace | On first retry |
+| Slow Motion | 250ms (for readable video recordings) |
 | Retries | 2 (CI) / 0 (local) |
+| Timeout | 180 seconds (3 min for AI processing) |
 
 | File | Coverage |
 |---|---|
-| [quiz-flow.spec.ts](file:///e:/Projects/quiz-app/frontend/e2e/quiz-flow.spec.ts) | Full quiz flow: topic selection → quiz → submit → results |
+| [quiz-flow.spec.ts](file:///e:/Projects/quiz-app/e2e-test/tests/quiz-flow.spec.ts) | Complete flow: Upload → AI Parse → Bulk Edit (topic assignment via BulkEditModal) → Inline Edit → Save → Global Manager search & verification → Quiz → Results → Return Home |
+
+**E2E Test Flow:**
+1. Navigates to homepage, verifies "QuizMaster" title
+2. Opens Upload Modal, uploads a test file
+3. Waits for AI parsing to complete
+4. Selects all parsed questions, opens Bulk Edit Modal, assigns test topic
+5. Inline-edits the first question's text
+6. Saves questions to database
+7. Navigates to Global Manager, searches for edited question
+8. Verifies question appears under correct topic with correct text
+9. Returns home, selects the test topic, starts quiz
+10. Answers all questions, submits quiz
+11. Verifies Results page shows score and explanations
+12. Returns to home screen
+
+**Visual Features:** The test injects a custom cursor and click ripple animation for video recordings, making automated interactions clearly visible.
 
 **Running:**
 ```bash
-cd frontend
-npm run test:e2e
+cd e2e-test
+npm install
+npm run test
 ```
 
-### 8.4. Visual E2E Tests (Puppeteer)
+**Viewing HTML Report:**
+```bash
+cd e2e-test
+npm run report
+```
 
-Located in `e2e-test/` — A standalone Puppeteer-based recorder that generates video recordings of the full user flow.
+### 8.4. Legacy Visual E2E Tests (Puppeteer)
+
+Also located in `e2e-test/` — standalone Puppeteer-based scripts:
 
 | File | Purpose |
 |---|---|
@@ -1139,20 +1310,14 @@ Located in `e2e-test/` — A standalone Puppeteer-based recorder that generates 
 | [test-comprehension.js](file:///e:/Projects/quiz-app/e2e-test/test-comprehension.js) | Comprehension-specific flow test |
 | [test-volume.js](file:///e:/Projects/quiz-app/e2e-test/test-volume.js) | Volume/load testing |
 
-**Running:**
-```bash
-cd e2e-test
-npm start
-```
-
 ### 8.5. E2E Test Data Cleanup
 
 ```bash
-cd backend
-npm run db:cleanup
+cd e2e-test
+npm run cleanup
 ```
 
-Removes all questions with topic `E2E-TEST-TOPIC-XYZ123` — a sentinel topic name used exclusively by E2E tests.
+Removes all questions with topic `E2E-TEST-TOPIC-XYZ123` — a sentinel topic name used exclusively by E2E tests. The cleanup script is located at [scripts/cleanup-e2e.js](file:///e:/Projects/quiz-app/e2e-test/scripts/cleanup-e2e.js).
 
 ### 8.6. Utility Scripts
 
@@ -1221,11 +1386,14 @@ npm start      # Runs server.js without nodemon
 |---|---|---|---|
 | `GET` | `/health` | ❌ | Health check |
 | `POST` | `/api/upload-questions` | ❌ | Bulk upsert questions |
-| `POST` | `/api/upload-document` | ❌ | AI document parsing (streaming) |
+| `POST` | `/api/upload-document` | ❌ | AI document parsing (background job) |
+| `GET` | `/api/jobs/:jobId` | ❌ | Poll parsing job status |
 | `GET` | `/api/topics` | ❌ | List topics with counts |
+| `GET` | `/api/sources` | ❌ | List distinct source values |
 | `POST` | `/api/generate-quiz` | ❌ | Generate randomized quiz |
 | `GET` | `/api/topics/:topic/questions` | ❌ | Get questions by topic |
 | `GET` | `/api/questions/search` | ❌ | Search questions |
+| `PUT` | `/api/questions/bulk` | ❌ | Bulk update questions |
 | `PUT` | `/api/questions/:id` | ❌ | Update a question |
 | `DELETE` | `/api/questions` | ❌ | Bulk delete questions |
 
@@ -1235,6 +1403,7 @@ npm start      # Runs server.js without nodemon
 |---|---|---|
 | `questions` | `Question` | Quiz question storage |
 | `configs` | `Config` | Application key-value configuration |
+| `parsingjobs` | `ParsingJob` | Background document parsing job tracking |
 
 ### C. NPM Scripts Reference
 
@@ -1258,3 +1427,12 @@ npm start      # Runs server.js without nodemon
 | `npm test` | `jest` | Run component tests |
 | `npm run test:watch` | `jest --watch` | Jest watch mode |
 | `npm run test:e2e` | `playwright test` | Run Playwright E2E tests |
+
+**E2E Tests (`e2e-test/package.json`):**
+
+| Script | Command | Purpose |
+|---|---|---|
+| `npm run test` | `playwright test` | Run E2E test suite |
+| `npm run test:ui` | `playwright test --ui` | Run with Playwright UI |
+| `npm run report` | `playwright show-report` | View HTML test report |
+| `npm run cleanup` | `node scripts/cleanup-e2e.js` | Clean up E2E test data |

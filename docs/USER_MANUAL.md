@@ -1,6 +1,6 @@
 # QuizMaster — User Manual
 
-> **Version:** 1.0.0  
+> **Version:** 1.1.0  
 > **Last Updated:** July 2026
 
 ---
@@ -31,7 +31,8 @@
 QuizMaster is an AI-powered quiz application that lets you:
 
 - **Upload any document** (PDF, DOCX, or TXT) and have artificial intelligence automatically generate quiz questions from it
-- **Manage a question bank** — organize, edit, search, and curate questions across topics and subtopics
+- **Manage a question bank** — organize, edit, search, and curate questions across topics, subtopics, and sources
+- **Bulk edit questions** — select multiple questions and update their topic, subtopic, source, or other fields in one operation
 - **Take customized quizzes** — select topics, set question counts, configure time limits, and test your knowledge
 - **Review detailed results** — see your score, review every question with explanations, and identify areas for improvement
 
@@ -185,16 +186,19 @@ This walkthrough takes you from an empty database to taking your first quiz in a
 3. A modal window appears with a drop zone
 4. Either **drag and drop** a PDF, DOCX, or TXT file into the zone, or click **Browse** to select a file
 5. Click **Upload & Parse**
-6. Watch the progress indicator as the AI processes your document:
-   - *Uploading...* → *AI is parsing your document...* → *Review*
+6. Watch the progress indicator as the AI processes your document in the background:
+   - *Uploading...* → *AI is parsing your document... X questions found* → *Review*
 7. Review the extracted questions — the AI has automatically identified:
    - Topics and subtopics
    - Questions with multiple-choice options
-   - Correct answers
-   - Explanations
-8. (Optional) Edit any questions, adjust topics, or remove unwanted questions
-9. Click **Save All Questions**
+   - Correct answers and explanations
+   - Source context passages
+8. (Optional) Use **Bulk Edit** to assign all questions to a custom topic, or edit individual questions inline
+9. Click **Save Questions**
 10. The modal closes and your home screen now shows the new topics!
+
+> [!TIP]
+> You can close the upload modal while the AI is still parsing. The background job continues running and you'll see the results when you reopen the upload modal.
 
 ### 3.2. Take Your First Quiz
 
@@ -240,19 +244,19 @@ The AI document upload feature is the heart of QuizMaster. It uses Google's Gemi
 3. After selecting a file, you'll see the file name, size, and type displayed
 4. Click **Upload & Parse** to start processing
 
-#### Understanding the Progress Indicators
+#### Background Processing
 
-During upload and AI processing, you'll see real-time status updates:
+When you upload a document, the AI processes it as a **background job**:
 
-| Status | What's Happening |
-|---|---|
-| **Uploading...** | Your file is being sent to the server |
-| **AI is parsing your document...** | The AI is reading your document and generating questions |
-| **Progress: X questions parsed** | The AI has found X questions so far (updates in real-time) |
-| **Review** | Processing is complete — review your questions before saving |
+1. The upload returns immediately and parsing begins on the server
+2. The modal shows a progress indicator with the count of questions found so far
+3. The progress updates automatically every 2.5 seconds
+4. You can click **"Hide Progress (Run in Background)"** to close the modal while parsing continues
+5. When you reopen the upload modal, it automatically detects the in-progress job and resumes showing the progress
+6. Once complete, you transition to the Review screen
 
 > [!NOTE]
-> Large documents may take 30-60 seconds to process. The progress indicator updates in real-time as questions are extracted.
+> The background job ID is saved in your browser's localStorage. This means parsing survives modal close and even page refreshes. If you close the browser entirely, the job still runs on the server — just reopen the app and the upload modal to check its status.
 
 #### Reviewing Parsed Questions
 
@@ -260,26 +264,34 @@ After the AI finishes, you enter the **Review** screen where you can:
 
 **For each question:**
 - View the parsed question text, options, correct answer, and explanation
-- **Edit inline:** Click the pencil icon to edit any field
-- **Assign topics:** Use the topic dropdown to change the topic, or click **+ Create New** to create a custom topic
+- **Edit inline:** Click the pencil icon to edit any field (source, context, question, options with add/remove, correct answer, explanation)
+- **Assign topics:** Use the topic dropdown to change the topic, or click **+ Create New Topic**
 - **Assign subtopics:** Similarly, assign or create subtopics for finer organization
-
-**Inline Editing:**
-When editing a question, you can modify:
-- **Context** — background passage for the question
-- **Question text** — the actual question
-- **Options** — add, remove, or edit answer options
-- **Correct answer** — select from the available options
-- **Explanation** — the explanation shown after answering
+- **Assign sources:** Use the source dropdown to tag where a question came from, or click **+ Create New Source**
 
 **Bulk Operations:**
 1. Select multiple questions using checkboxes (or drag to select)
 2. A bulk actions bar appears at the top with:
-   - **Apply Topic** — assign the same topic to all selected questions
-   - **Apply Subtopic** — assign the same subtopic to all selected questions
+   - **Bulk Edit** — opens the Bulk Edit Modal (see below)
    - **Delete Selected** — remove unwanted questions
 
-3. Click **Save All Questions** when you're satisfied with the results
+3. Click **Save Questions** when you're satisfied with the results
+
+#### Bulk Edit Modal
+
+The Bulk Edit Modal lets you update a single field across all selected questions at once:
+
+1. Select questions using checkboxes (or use **Select All**)
+2. Click the **Bulk Edit** button
+3. Choose the **field** to edit from the dropdown:
+   - Topic, Subtopic, Source, Context, Explanation, Question Text, Correct Answer
+4. Enter the new **value** (with autocomplete suggestions for Topic and Source fields)
+5. Click **Apply to All**
+
+This is especially useful for:
+- Assigning a consistent topic to all questions from a document
+- Tagging all questions with the same source
+- Updating subtopics in bulk
 
 #### Tips for Better AI Results
 
@@ -302,18 +314,20 @@ Access via the **Global Manager** button on the home screen, or navigate to `/ma
 
 **Features:**
 - **View all questions** across all topics in a single, searchable list
-- **Search** — type in the search box to instantly filter questions by any field (question text, options, answers, topics, subtopics, explanations)
+- **Search** — type in the search box to instantly filter questions by any field (question text, options, answers, topics, subtopics, sources, explanations)
 - **Group by topic** — questions are organized under collapsible topic and subtopic headers
 - **Select & bulk delete** — check individual questions or use **Select All**, then click **Delete Selected**
-- **Inline edit** — click the pencil icon on any question to edit all fields in place
+- **Bulk Edit** — select questions and click **Bulk Edit** to update a field across all selected questions
+- **Inline edit** — click the pencil icon on any question to edit all fields in place (including the Source field)
 - **Expand/collapse** — click a question to see its full details (context, options, correct answer, explanation)
+- **Source badges** — questions display their source as a badge for easy identification
 
 #### Per-Topic Manager
 
 On the home screen, each topic card has a pencil icon. Click it to open the **Manage Topic** modal:
 
 - Shows only questions for that specific topic
-- Supports the same search, edit, and delete features
+- Supports the same search, edit, bulk edit, and delete features
 - Questions are organized by subtopic within the topic
 
 #### Editing a Question
@@ -322,6 +336,7 @@ On the home screen, each topic card has a pencil icon. Click it to open the **Ma
 2. The question expands into edit mode with form fields:
    - **Topic** — text input
    - **Subtopic** — text input
+   - **Source** — text input with autocomplete from existing sources
    - **Context** — textarea for background passage
    - **Question Text** — textarea
    - **Options** — one option per line (textarea)
@@ -329,9 +344,17 @@ On the home screen, each topic card has a pencil icon. Click it to open the **Ma
    - **Explanation** — textarea
 3. Click **Save** to apply changes, or **Cancel** to discard
 
-#### Deleting Questions
+#### Bulk Editing Questions
 
-**Single question:** Expand the question → use the delete option
+1. Select questions using checkboxes (or **Select All**)
+2. Click **Bulk Edit** (appears when items are selected)
+3. In the Bulk Edit Modal:
+   - Choose which field to update (topic, subtopic, source, context, explanation, question_text, correct_answer)
+   - Enter the new value
+   - Click **Apply to All**
+4. All selected questions are updated at once
+
+#### Deleting Questions
 
 **Bulk delete:**
 1. Select questions using the checkboxes
@@ -502,10 +525,11 @@ The main landing page where you configure quizzes and access all features.
 |---|---|
 | **Drop zone** | Drag-and-drop area with file type labels |
 | **File info** | Selected file name, size, and type |
-| **Progress** | Status text + progress bar + question counter |
-| **Review list** | Scrollable question list with inline edit, topic/subtopic dropdowns |
-| **Bulk bar** | Appears when questions selected — topic/subtopic assignment + delete |
-| **Action buttons** | Cancel, Save All Questions |
+| **Progress** | Status text + question counter + "Hide Progress" button |
+| **Review list** | Scrollable question list with inline edit, topic/subtopic/source dropdowns |
+| **Bulk bar** | Appears when questions selected — Bulk Edit button + Delete Selected |
+| **Bulk Edit Modal** | Field selector dropdown + value input + Apply to All |
+| **Action buttons** | Discard & Close, Save Questions |
 
 ### Quiz Page (`/quiz`)
 
@@ -528,8 +552,9 @@ The main landing page where you configure quizzes and access all features.
 
 | Section | UI Elements |
 |---|---|
-| **Header** | Back arrow, "Manage All Questions" title |
-| **Content card** | QuestionListManager with search, select, edit, delete |
+| **Header** | Back arrow, "Global Manager" title with question count |
+| **Content card** | QuestionListManager with search, select, bulk edit, inline edit, delete |
+| **Bulk Edit Modal** | Field selector + value input (appears when Bulk Edit clicked) |
 
 ---
 
@@ -549,11 +574,12 @@ The main landing page where you configure quizzes and access all features.
 | Symptom | Solution |
 |---|---|
 | "Missing Gemini API key" error | Verify `GEMINI_API_KEY` is set in `backend/.env` and restart the backend |
-| Upload hangs or times out | Large PDFs may take time — check the streaming progress. For very large documents (100+ pages), try splitting into smaller files |
+| Upload appears stuck | The parsing runs as a background job — check the progress counter. For very large documents, it may take up to 60 seconds |
 | "Unsupported file type" | Only `.pdf`, `.docx`, and `.txt` files are supported |
 | "No questions could be extracted" | The document may not contain quiz-appropriate content. Try a document with factual, educational content |
 | Image-based PDF returns no results | Image PDFs are supported — the AI processes them page by page. Ensure the scanned text is legible |
 | AI generates low-quality questions | Review and edit questions before saving. The AI works best with structured educational content |
+| Reopening modal doesn't show progress | The job ID is stored in localStorage — try clearing localStorage if the job has already completed |
 
 ### Quiz Issues
 
@@ -579,7 +605,7 @@ The main landing page where you configure quizzes and access all features.
 ### General
 
 **Q: How many questions can the AI extract from a document?**  
-A: There's no hard limit. A typical 10-page document might yield 20-50 questions depending on content density. The AI extracts as many meaningful questions as it can find.
+A: There's no hard limit. A typical 10-page document might yield 20-50 questions depending on content density.
 
 **Q: Can I manually add questions without uploading a document?**  
 A: Currently, the primary way to add questions is through document upload. The API supports direct question upload (`POST /api/upload-questions`), which could be used with external tools.
@@ -590,33 +616,44 @@ A: No. Documents are processed in memory and never saved to disk. Only the extra
 **Q: What happens to my quiz data if I close the browser?**  
 A: Quiz session data (current quiz, answers, timer) is stored in browser memory only. If you close the browser or navigate away, your quiz progress is lost. Your question bank in MongoDB is preserved.
 
+**Q: Can I close the browser during document parsing?**  
+A: Yes! Document parsing runs as a background job on the server. The job ID is saved in your browser's localStorage, so when you reopen the app and the upload modal, it will automatically check on the job's status and show you the results when ready.
+
 ### AI & Document Processing
 
 **Q: Which AI model does QuizMaster use?**  
 A: QuizMaster uses Google's Gemini AI. It automatically selects the best available model, preferring `gemini-2.5-flash` for optimal speed and quality. If a model is unavailable or rate-limited, it automatically falls back to alternative models.
 
 **Q: Does the AI always generate correct answers?**  
-A: The AI is highly accurate but not infallible. We strongly recommend reviewing AI-generated questions before saving them. The review interface makes it easy to correct any mistakes.
+A: The AI is highly accurate but not infallible. We strongly recommend reviewing AI-generated questions before saving them.
 
 **Q: Can I use the app without an AI API key?**  
-A: Yes, but you won't be able to use the document upload feature. You can still manage existing questions and take quizzes from questions already in the database.
+A: Yes, but you won't be able to use the document upload feature. You can still manage existing questions and take quizzes.
 
 **Q: Is my document content sent to Google?**  
-A: Yes, the text extracted from your document is sent to Google's Gemini API for processing. Do not upload documents containing sensitive, confidential, or personally identifiable information if this is a concern.
+A: Yes, the text extracted from your document is sent to Google's Gemini API for processing. Do not upload sensitive or confidential documents.
 
 ### Quizzes
 
 **Q: Are quiz questions randomized?**  
-A: Yes. Questions are randomly sampled from each selected topic and then shuffled across all topics using the Fisher-Yates algorithm.
+A: Yes. Questions are randomly sampled from each selected topic and then shuffled using the Fisher-Yates algorithm.
 
 **Q: Can I retake a quiz with the same questions?**  
-A: Each quiz generation creates a fresh randomized selection. To take a similar quiz, select the same topics and question counts — the questions may differ due to random sampling.
+A: Each quiz generation creates a fresh randomized selection. The questions may differ due to random sampling.
 
 **Q: What happens if I don't answer all questions?**  
-A: Unanswered questions are counted as incorrect. You'll see a confirmation dialog before submitting if you have unanswered questions.
+A: Unanswered questions are counted as incorrect. You'll see a confirmation dialog before submitting.
 
 **Q: Can I pause a quiz and resume later?**  
-A: No. The timer runs continuously once a quiz starts. If you navigate away, the quiz state may be lost.
+A: No. The timer runs continuously once a quiz starts.
+
+### Question Management
+
+**Q: What is the "source" field?**  
+A: The source field lets you tag where a question came from (e.g., "Chapter 3 — Biology Textbook"). It's optional and helps you organize questions by their origin.
+
+**Q: How does Bulk Edit work?**  
+A: Select multiple questions using checkboxes, click "Bulk Edit", choose a field to update (topic, subtopic, source, etc.), enter the new value, and click "Apply to All". All selected questions are updated simultaneously.
 
 ---
 
@@ -655,13 +692,13 @@ A: No. The timer runs continuously once a quiz starts. If you navigate away, the
 |---|---|
 | **Topic** | A broad subject category for questions (e.g., "Mathematics", "Science") |
 | **Subtopic** | A subdivision within a topic (e.g., "Algebra" within "Mathematics") |
+| **Source** | An optional tag indicating where a question originated (e.g., "Chapter 5", "Lecture Notes") |
 | **Context** | A passage or additional information provided alongside a question to give background |
 | **Explanation** | A detailed explanation of why the correct answer is correct, shown after quiz submission |
 | **Answer Key** | The set of correct answers for a quiz, kept separate from questions during quiz-taking |
-| **Upsert** | A database operation that updates an existing record or inserts a new one if it doesn't exist |
-| **NDJSON** | Newline-Delimited JSON — a streaming format where each line is a separate JSON object |
+| **Bulk Edit** | An operation that updates a single field across multiple selected questions at once |
+| **Background Job** | A server-side process that runs asynchronously — used for AI document parsing so the user doesn't need to wait |
 | **Gemini AI** | Google's large language model used for document parsing and question generation |
 | **Glassmorphism** | A UI design trend using translucent backgrounds with backdrop blur effects |
 | **Fisher-Yates Shuffle** | An algorithm for generating a random permutation of a sequence — used for quiz randomization |
-| **Bulk Write** | A MongoDB operation that performs multiple write operations in a single batch |
 | **Question Bank** | The complete collection of all questions stored in the database |
