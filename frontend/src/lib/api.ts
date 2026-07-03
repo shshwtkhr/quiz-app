@@ -44,6 +44,19 @@ export async function updateQuestion(id: string, data: Partial<QuestionData>): P
   return res.json();
 }
 
+export async function bulkUpdateQuestions(ids: string[], updateData: Partial<QuestionData>): Promise<{ message: string; modifiedCount: number }> {
+  const res = await fetch(`${API_BASE}/questions/bulk`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, updateData }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || errorData.message || 'Failed to bulk update questions');
+  }
+  return res.json();
+}
+
 /** Generate a quiz from selected topics */
 export async function generateQuiz(
   topics: { topic: string; count: number }[]

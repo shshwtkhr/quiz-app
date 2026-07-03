@@ -252,6 +252,38 @@ exports.updateQuestion = async (req, res, next) => {
 };
 
 /**
+ * PUT /api/questions/bulk
+ * Bulk updates specific fields for multiple questions.
+ * Expects { ids: string[], updateData: object }
+ */
+exports.bulkUpdateQuestions = async (req, res, next) => {
+  try {
+    const { ids, updateData } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Request body must contain an array of ids' });
+    }
+
+    if (!updateData || typeof updateData !== 'object' || Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'Request body must contain updateData object' });
+    }
+
+    const result = await Question.updateMany(
+      { _id: { $in: ids } },
+      { $set: updateData },
+      { runValidators: true }
+    );
+
+    res.json({
+      message: 'Questions updated successfully',
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * DELETE /api/questions
  * Deletes multiple questions given an array of IDs.
  */

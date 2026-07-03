@@ -2,16 +2,18 @@ import React, { useState, useMemo } from 'react';
 import { QuestionData } from '@/types';
 import { Search, Trash2, Edit2, Save, X, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { formatMarkdownText } from '@/lib/formatText';
+import BulkEditModal, { EditableField } from './BulkEditModal';
 
 interface QuestionListManagerProps {
   questions: QuestionData[];
   onDelete: (ids: string[]) => Promise<void>;
   onUpdate: (id: string, data: Partial<QuestionData>) => Promise<void>;
+  onBulkUpdate?: (ids: string[], data: Partial<QuestionData>) => Promise<void>;
   groupByTopic: boolean;
   isLoading: boolean;
 }
 
-export default function QuestionListManager({ questions, onDelete, onUpdate, groupByTopic, isLoading }: QuestionListManagerProps) {
+export default function QuestionListManager({ questions, onDelete, onUpdate, onBulkUpdate, groupByTopic, isLoading }: QuestionListManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -19,6 +21,7 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [existingSources, setExistingSources] = useState<string[]>([]);
 
   // Fetch sources for datalist
@@ -102,6 +105,25 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
     }
   };
 
+  const handleBulkApply = async (field: EditableField, value: string) => {
+    if (!onBulkUpdate) return;
+    setIsUpdating(true);
+    try {
+      const data: Partial<QuestionData> = {};
+      data[field as keyof QuestionData] = value as any;
+      await onBulkUpdate(Array.from(selectedIds), data);
+      setSelectedIds(new Set());
+      setIsBulkEditModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      alert('Failed to bulk update questions');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const existingTopics = useMemo(() => Array.from(new Set(questions.map(q => q.topic))), [questions]);
+
   const handleEditClick = (q: QuestionData) => {
     setEditingId(q._id);
     setEditFormData({
@@ -165,14 +187,25 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
             {selectedIds.size === filteredQuestions.length && filteredQuestions.length > 0 ? 'Deselect All' : 'Select All'}
           </button>
           {selectedIds.size > 0 && (
-            <button
-              onClick={handleDeleteSelected}
-              disabled={isDeleting}
-              className="px-3 py-2 text-sm font-medium text-white bg-danger/80 border border-danger rounded-lg hover:bg-danger transition-colors flex items-center gap-2 whitespace-nowrap"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete ({selectedIds.size})
-            </button>
+            <>
+              {onBulkUpdate && (
+                <button
+                  onClick={() => setIsBulkEditModalOpen(true)}
+                  disabled={isUpdating || isDeleting}
+                  className="px-3 py-2 text-sm font-medium text-black bg-primary border border-primary rounded-lg hover:bg-primary-dark transition-colors whitespace-nowrap"
+                >
+                  Bulk Edit ({selectedIds.size})
+                </button>
+              )}
+              <button
+                onClick={handleDeleteSelected}
+                disabled={isDeleting || isUpdating}
+                className="px-3 py-2 text-sm font-medium text-white bg-danger/80 border border-danger rounded-lg hover:bg-danger transition-colors flex items-center gap-2 whitespace-nowrap"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete ({selectedIds.size})
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -398,6 +431,15 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, gro
           ))
         )}
       </div>
+
+      <BulkEditModal
+        isOpen={isBulkEditModalOpen}
+        onClose={() => setIsBulkEditModalOpen(false)}
+        onApply={handleBulkApply}
+        selectedCount={selectedIds.size}
+        existingTopics={existingTopics}
+        existingSources={existingSources}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ const {
   getQuestionsByTopic,
   searchQuestions,
   updateQuestion,
+  bulkUpdateQuestions,
   deleteQuestions,
 } = require('../controllers/questionController');
 const { uploadDocument } = require('../controllers/documentController');
@@ -35,6 +36,9 @@ router.get('/topics/:topic/questions', getQuestionsByTopic);
 
 // GET /api/questions/search - Global search across all questions
 router.get('/questions/search', searchQuestions);
+
+// PUT /api/questions/bulk - Bulk update multiple questions
+router.put('/questions/bulk', bulkUpdateQuestions);
 
 // PUT /api/questions/:id - Update a question
 router.put('/questions/:id', updateQuestion);

@@ -110,9 +110,19 @@ test.describe('QuizMaster Full E2E Flow', () => {
 
     // Bulk set the topic to our testTopic so it can be cleaned up
     await page.locator('label:has-text("Select All")').click();
-    await page.locator('select').first().selectOption('NEW');
-    await page.getByPlaceholder('New topic...').fill(testTopic);
-    await page.getByRole('button', { name: 'Apply' }).click();
+    
+    // Open Bulk Edit Modal
+    await page.getByRole('button', { name: 'Bulk Edit' }).click();
+    await expect(page.locator('h2').filter({ hasText: 'Bulk Edit Questions' })).toBeVisible();
+    
+    // Fill in the new topic (field defaults to 'topic')
+    await page.getByPlaceholder('Enter new topic...').fill(testTopic);
+    
+    // Click Apply to All
+    await page.getByRole('button', { name: 'Apply to All' }).click();
+    
+    // Wait for modal to close
+    await expect(page.locator('h2').filter({ hasText: 'Bulk Edit Questions' })).not.toBeVisible();
     
     // Click edit on the first question
     await page.locator('button[title="Edit parsed question"]').first().click();

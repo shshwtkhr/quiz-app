@@ -2,6 +2,7 @@ import { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 import { X, Upload, FileText, CheckCircle2, AlertCircle, Edit2, Plus, Trash2 } from 'lucide-react';
 import { uploadQuestions } from '@/lib/api';
 import { formatMarkdownText } from '@/lib/formatText';
+import BulkEditModal, { EditableField } from './BulkEditModal';
 
 interface TopicData {
   _id: string;
@@ -31,12 +32,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   
   // Bulk selection state
   const [selectedQuestions, setSelectedQuestions] = useState<Set<number>>(new Set());
-  const [bulkTopic, setBulkTopic] = useState('');
-  const [bulkSubtopic, setBulkSubtopic] = useState('');
-  const [bulkSource, setBulkSource] = useState('');
-  const [isBulkNewTopic, setIsBulkNewTopic] = useState(false);
-  const [isBulkNewSubtopic, setIsBulkNewSubtopic] = useState(false);
-  const [isBulkNewSource, setIsBulkNewSource] = useState(false);
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   
   const [isDragSelecting, setIsDragSelecting] = useState(false);
   const [dragSelectMode, setDragSelectMode] = useState<'add' | 'remove' | null>(null);
@@ -198,21 +194,13 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setParsedQuestions(updated);
   };
 
-  const handleBulkApply = () => {
+  const handleBulkApply = (field: EditableField, value: string) => {
     const updated = [...parsedQuestions];
     selectedQuestions.forEach(index => {
-      if (bulkTopic) updated[index].topic = bulkTopic;
-      if (bulkSubtopic) updated[index].subtopic = bulkSubtopic;
-      if (bulkSource) updated[index].source = bulkSource;
+      updated[index][field] = value;
     });
     setParsedQuestions(updated);
     setSelectedQuestions(new Set());
-    setBulkTopic('');
-    setBulkSubtopic('');
-    setBulkSource('');
-    setIsBulkNewTopic(false);
-    setIsBulkNewSubtopic(false);
-    setIsBulkNewSource(false);
   };
 
   const handleDeleteSelected = () => {
@@ -255,9 +243,6 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setExistingTopics([]);
     setParsedCount(0);
     setSelectedQuestions(new Set());
-    setBulkTopic('');
-    setBulkSubtopic('');
-    setBulkSource('');
     setEditingIndex(null);
     setEditFormData(null);
   };
@@ -349,72 +334,11 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
               <div className="p-3 mb-4 rounded-xl border border-primary/30 bg-primary/10 flex flex-wrap gap-3 items-center animate-fade-in">
                 <span className="text-primary font-medium text-sm whitespace-nowrap">{selectedQuestions.size} selected</span>
                 
-                {isBulkNewTopic ? (
-                  <div className="flex gap-2 flex-1 min-w-[150px]">
-                    <input type="text" value={bulkTopic} onChange={(e) => setBulkTopic(e.target.value)} className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm" placeholder="New topic..." />
-                    <button onClick={() => { setIsBulkNewTopic(false); setBulkTopic(''); }} className="text-xs px-2 bg-surface-light rounded">Cancel</button>
-                  </div>
-                ) : (
-                  <select
-                    value={bulkTopic}
-                    onChange={(e) => {
-                      if (e.target.value === 'NEW') setIsBulkNewTopic(true);
-                      else setBulkTopic(e.target.value);
-                    }}
-                    className="flex-1 min-w-[150px] bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none"
-                  >
-                    <option value="" className="bg-surface text-text-muted">Select Topic...</option>
-                    {existingTopicNames.map(t => <option key={t} value={t} className="bg-surface text-text-primary">{t}</option>)}
-                    <option value="NEW" className="bg-surface font-bold text-primary">+ Create New</option>
-                  </select>
-                )}
-
-                {isBulkNewSubtopic ? (
-                  <div className="flex gap-2 flex-1 min-w-[150px]">
-                    <input type="text" value={bulkSubtopic} onChange={(e) => setBulkSubtopic(e.target.value)} className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm" placeholder="New subtopic..." />
-                    <button onClick={() => { setIsBulkNewSubtopic(false); setBulkSubtopic(''); }} className="text-xs px-2 bg-surface-light rounded">Cancel</button>
-                  </div>
-                ) : (
-                  <select
-                    value={bulkSubtopic}
-                    onChange={(e) => {
-                      if (e.target.value === 'NEW') setIsBulkNewSubtopic(true);
-                      else setBulkSubtopic(e.target.value);
-                    }}
-                    className="flex-1 min-w-[150px] bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none"
-                  >
-                    <option value="" className="bg-surface text-text-muted">Select Subtopic...</option>
-                    {getSubtopicsForTopic(bulkTopic).map(s => <option key={s} value={s} className="bg-surface text-text-primary">{s}</option>)}
-                    <option value="NEW" className="bg-surface font-bold text-primary">+ Create New</option>
-                  </select>
-                )}
-
-                {isBulkNewSource ? (
-                  <div className="flex gap-2 flex-1 min-w-[150px]">
-                    <input type="text" value={bulkSource} onChange={(e) => setBulkSource(e.target.value)} className="flex-1 bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm" placeholder="New source..." />
-                    <button onClick={() => { setIsBulkNewSource(false); setBulkSource(''); }} className="text-xs px-2 bg-surface-light rounded">Cancel</button>
-                  </div>
-                ) : (
-                  <select
-                    value={bulkSource}
-                    onChange={(e) => {
-                      if (e.target.value === 'NEW') setIsBulkNewSource(true);
-                      else setBulkSource(e.target.value);
-                    }}
-                    className="flex-1 min-w-[150px] bg-surface-dark border border-glass-border rounded-lg px-3 py-1.5 text-text-primary text-sm appearance-none"
-                  >
-                    <option value="" className="bg-surface text-text-muted">Select Source...</option>
-                    {existingSources.map(s => <option key={s} value={s} className="bg-surface text-text-primary">{s}</option>)}
-                    <option value="NEW" className="bg-surface font-bold text-primary">+ Create New</option>
-                  </select>
-                )}
-                
                 <button 
-                  onClick={handleBulkApply}
-                  disabled={!bulkTopic && !bulkSubtopic && !bulkSource}
-                  className="px-4 py-1.5 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary-dark transition disabled:opacity-50"
+                  onClick={() => setIsBulkEditModalOpen(true)}
+                  className="px-4 py-1.5 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary-dark transition"
                 >
-                  Apply
+                  Bulk Edit
                 </button>
                 <button 
                   onClick={handleDeleteSelected}
@@ -808,6 +732,15 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
           </div>
         )}
       </div>
+
+      <BulkEditModal
+        isOpen={isBulkEditModalOpen}
+        onClose={() => setIsBulkEditModalOpen(false)}
+        onApply={handleBulkApply}
+        selectedCount={selectedQuestions.size}
+        existingTopics={existingTopicNames}
+        existingSources={existingSources}
+      />
     </div>
   );
 }

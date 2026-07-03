@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Search } from 'lucide-react';
-import { fetchQuestionsByTopic, deleteQuestions, updateQuestion } from '@/lib/api';
+import { fetchQuestionsByTopic, deleteQuestions, updateQuestion, bulkUpdateQuestions } from '@/lib/api';
 import { QuestionData } from '@/types';
 import QuestionListManager from './QuestionListManager';
 
@@ -44,6 +44,11 @@ export default function ManageTopicModal({ isOpen, onClose, topic }: ManageTopic
     await loadQuestions();
   };
 
+  const handleBulkUpdate = async (ids: string[], data: Partial<QuestionData>) => {
+    await bulkUpdateQuestions(ids, data);
+    await loadQuestions();
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -78,6 +83,7 @@ export default function ManageTopicModal({ isOpen, onClose, topic }: ManageTopic
             questions={questions}
             onDelete={handleDelete}
             onUpdate={handleUpdate}
+            onBulkUpdate={handleBulkUpdate}
             groupByTopic={false}
             isLoading={isLoading}
           />

@@ -11,9 +11,10 @@ Below is a real-time recording of the complete application flow, validated by ou
 
 - **Document Upload**: Upload raw text files.
 - **AI-Powered Parsing**: Uses Google Gemini to parse content, extract topics, and generate questions, correct answers, and explanations.
-- **Context Preservation**: Retains the specific source passage associated with each question to provide grounded explanations.
+- **Context & Source Preservation**: Retains the specific source passage associated with each question and allows custom `source` tagging to provide grounded explanations.
 - **Dynamic Quiz Engine**: Test your knowledge on specific topics with randomized questions and a timer.
-- **Global Manager**: Easily search, bulk edit, inline-edit, categorize, and delete your questions across the entire database.
+- **Global & Topic Manager**: Easily search, inline-edit, categorize, and delete your questions across the entire database or within specific topics.
+- **Multi-Select Bulk Edit**: Select multiple questions at once to easily bulk-update their topic, subtopic, source, context, or explanation.
 - **E2E Testing**: Comprehensive end-to-end testing with **Playwright**, validating the full user flow from upload to quiz results.
 
 ## 🧪 Testing

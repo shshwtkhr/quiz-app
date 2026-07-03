@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Search as SearchIcon } from 'lucide-react';
-import { searchQuestions, deleteQuestions, updateQuestion } from '@/lib/api';
+import { searchQuestions, deleteQuestions, updateQuestion, bulkUpdateQuestions } from '@/lib/api';
 import { QuestionData } from '@/types';
 import QuestionListManager from '@/components/QuestionListManager';
 
@@ -43,6 +43,11 @@ export default function GlobalManagePage() {
     setSearchTrigger(prev => prev + 1); // trigger reload
   };
 
+  const handleBulkUpdate = async (ids: string[], data: Partial<QuestionData>) => {
+    await bulkUpdateQuestions(ids, data);
+    setSearchTrigger(prev => prev + 1); // trigger reload
+  };
+
   return (
     <div className="min-h-screen pt-24 pb-12 px-4 flex flex-col max-w-5xl mx-auto animate-fade-in">
       <div className="flex items-center gap-4 mb-8">
@@ -64,6 +69,7 @@ export default function GlobalManagePage() {
           questions={questions}
           onDelete={handleDelete}
           onUpdate={handleUpdate}
+          onBulkUpdate={handleBulkUpdate}
           groupByTopic={true}
           isLoading={isLoading}
         />
