@@ -135,6 +135,7 @@ exports.uploadDocument = async (req, res, next) => {
 
     // 1. Chunk the document
     const chunks = [];
+    let dictionary = null;
     
     if (isImagePdf) {
       const pdfDoc = await PDFDocument.load(buffer);
@@ -156,28 +157,35 @@ exports.uploadDocument = async (req, res, next) => {
          });
       }
     } else {
-      const maxChunkSize = 5000;
-      let currentChunk = '';
+      dictionary = {};
+      let currentLineIndex = 1;
       let currentPage = '1';
-      const paragraphs = extractedText.split(/\n\s*\n/);
+      const textLinesWithIndex = [];
       
-      for (const p of paragraphs) {
+      const lines = extractedText.split('\n');
+      for (const line of lines) {
         // Extract page marker if present
-        const pageMatch = p.match(/___PAGE_START_(\d+)___/);
+        const pageMatch = line.match(/___PAGE_START_(\d+)___/);
         if (pageMatch) {
           currentPage = pageMatch[1];
+          continue;
         }
-        // Remove marker from actual chunk text
-        const cleanP = p.replace(/___PAGE_START_\d+___\n?/g, '');
+        const trimmed = line.trim();
+        if (!trimmed) continue;
         
-        if (currentChunk.length + cleanP.length > maxChunkSize && currentChunk.length > 0) {
-          chunks.push({ text: currentChunk, pageRange: currentPage });
-          currentChunk = '';
-        }
-        currentChunk += cleanP + '\n\n';
+        dictionary[currentLineIndex] = { text: trimmed, page: currentPage };
+        textLinesWithIndex.push(`[${currentLineIndex}] ${trimmed}`);
+        currentLineIndex++;
       }
-      if (currentChunk.trim().length > 0) {
-        chunks.push({ text: currentChunk, pageRange: currentPage });
+      
+      const LINES_PER_CHUNK = 1000;
+      const OVERLAP = 150; // 150 lines overlap ensures passage preservation
+      
+      for (let i = 0; i < textLinesWithIndex.length; i += (LINES_PER_CHUNK - OVERLAP)) {
+        const chunkLines = textLinesWithIndex.slice(i, i + LINES_PER_CHUNK);
+        if (chunkLines.length > 0) {
+          chunks.push({ text: chunkLines.join('\n'), isTextIndex: true });
+        }
       }
     }
 
@@ -216,9 +224,22 @@ exports.uploadDocument = async (req, res, next) => {
         await Promise.all(workers);
       };
 
-      const promptBase = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, a subtopic (if you cannot determine a specific subtopic, use "General"), the question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. 
+      const promptBaseOld = `Extract questions from the following text and return them as a JSON array. Each question must include the topic, a subtopic (if you cannot determine a specific subtopic, use "General"), the question text, an array of options (at least two), the correct answer (which must exactly match one of the options), and an explanation. 
 CRITICAL: If a question is based on a comprehension passage, a shared context, or is preceded by a block of "Direction", "Directions", or "Instructions" (e.g., "Direction (181-185): ..."), you MUST extract that entire passage or direction block and duplicate it into the "context" field for EVERY SINGLE QUESTION that it applies to. Do not leave the context field empty if a question has an associated direction block above it.
 IMPORTANT: Preserve any essential text formatting (such as bolding or italics) in the question text, context, or options by using standard Markdown (e.g., **bold** or *italics*). Do not wrap the final JSON response in markdown code blocks.
+
+Text:
+`;
+
+      const promptBaseNew = `Extract questions from the following text and return them as a JSON array. 
+The text provided is line-numbered in the format [INDEX] text.
+You must act as a semantic router. Instead of outputting the actual text of the question or options, you MUST output the exact integer INDEX of the lines that correspond to them.
+
+CRITICAL RULES:
+1. "context_lines": Array of line indexes for the comprehension passage or shared directions. Empty array if none.
+2. "question_lines": Array of line indexes for the question text.
+3. "options": Array of objects. Each has "lines" (array of indexes for that option) and "is_correct" (boolean).
+4. "explanation_lines": Array of line indexes for the explanation.
 
 Text:
 `;
@@ -229,7 +250,55 @@ Text:
           const textContent = typeof chunk === 'string' ? chunk : (chunk.text || '');
           if (!chunk.inlineData && !textContent.trim()) return;
           
-          const contentsPayload = chunk.inlineData ? [promptBase, chunk] : promptBase + textContent;
+          let contentsPayload;
+          let currentSchema;
+          
+          if (chunk.inlineData) {
+            contentsPayload = [promptBaseOld, chunk];
+            currentSchema = {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  topic: { type: 'string' },
+                  subtopic: { type: 'string' },
+                  context: { type: 'string' },
+                  question_text: { type: 'string' },
+                  options: { type: 'array', items: { type: 'string' } },
+                  correct_answer: { type: 'string' },
+                  explanation: { type: 'string' },
+                },
+                required: ['topic', 'subtopic', 'question_text', 'options', 'correct_answer', 'explanation'],
+              }
+            };
+          } else {
+            contentsPayload = promptBaseNew + textContent;
+            currentSchema = {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  topic: { type: 'string' },
+                  subtopic: { type: 'string' },
+                  context_lines: { type: 'array', items: { type: 'integer' } },
+                  question_lines: { type: 'array', items: { type: 'integer' } },
+                  options: { 
+                    type: 'array', 
+                    items: { 
+                      type: 'object', 
+                      properties: {
+                        lines: { type: 'array', items: { type: 'integer' } },
+                        is_correct: { type: 'boolean' }
+                      },
+                      required: ['lines', 'is_correct']
+                    } 
+                  },
+                  explanation_lines: { type: 'array', items: { type: 'integer' } },
+                },
+                required: ['topic', 'subtopic', 'question_lines', 'options', 'explanation_lines'],
+              }
+            };
+          }
           
           const fallbackModels = await getAvailableModels(ai);
           let chunkSuccess = false;
@@ -242,22 +311,7 @@ Text:
                 contents: contentsPayload,
                 config: {
                   responseMimeType: 'application/json',
-                  responseSchema: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        topic: { type: 'string' },
-                        subtopic: { type: 'string' },
-                        context: { type: 'string', description: 'The comprehension passage or shared context for the question, if any.' },
-                        question_text: { type: 'string' },
-                        options: { type: 'array', items: { type: 'string' } },
-                        correct_answer: { type: 'string' },
-                        explanation: { type: 'string' },
-                      },
-                      required: ['topic', 'subtopic', 'question_text', 'options', 'correct_answer', 'explanation'],
-                    },
-                  },
+                  responseSchema: currentSchema,
                 },
               });
 
@@ -265,11 +319,52 @@ Text:
               const questions = JSON.parse(textOutput);
 
               if (Array.isArray(questions) && questions.length > 0) {
-                const validQuestions = questions.filter(q => {
-                   const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
-                   const hasCorrect = hasOptions && q.options.some(opt => opt.trim() === (q.correct_answer || '').trim());
-                   return q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
-                });
+                let validQuestions = [];
+                
+                if (chunk.inlineData) {
+                  validQuestions = questions.filter(q => {
+                     const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
+                     const hasCorrect = hasOptions && q.options.some(opt => opt.trim() === (q.correct_answer || '').trim());
+                     return q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
+                  });
+                } else {
+                  for (const q of questions) {
+                    try {
+                       if (!q.question_lines || q.question_lines.length === 0) continue;
+                       if (!q.options || q.options.length < 2) continue;
+                       
+                       const getText = (indexes) => {
+                         if (!indexes) return '';
+                         return indexes.map(idx => dictionary[idx]?.text || '').filter(Boolean).join('\n');
+                       };
+                       
+                       const allIdxs = [...(q.context_lines || []), ...q.question_lines];
+                       q.options.forEach(o => allIdxs.push(...(o.lines || [])));
+                       allIdxs.push(...(q.explanation_lines || []));
+                       
+                       const pages = [...new Set(allIdxs.map(idx => dictionary[idx]?.page).filter(Boolean))];
+                       let pageRange = null;
+                       if (pages.length === 1) pageRange = pages[0];
+                       else if (pages.length > 1) pageRange = `${pages[0]}-${pages[pages.length-1]}`;
+                       
+                       const correctOpt = q.options.find(o => o.is_correct);
+                       if (!correctOpt) continue;
+  
+                       validQuestions.push({
+                         topic: q.topic || 'General',
+                         subtopic: q.subtopic || 'General',
+                         context: getText(q.context_lines),
+                         question_text: getText(q.question_lines),
+                         options: q.options.map(o => getText(o.lines)),
+                         correct_answer: getText(correctOpt.lines),
+                         explanation: getText(q.explanation_lines),
+                         pageRange: pageRange
+                       });
+                    } catch (e) {
+                       console.error("Error mapping indexed question:", e);
+                    }
+                  }
+                }
                 
                 resultsByChunk[currentIndex] = validQuestions;
                 totalParsed += validQuestions.length;
@@ -297,7 +392,16 @@ Text:
           }
         });
 
-        const allQuestions = resultsByChunk.flat().filter(Boolean);
+        let allQuestions = resultsByChunk.flat().filter(Boolean);
+        
+        // Deduplicate overlapping questions by question_text
+        const uniqueMap = new Map();
+        for (const q of allQuestions) {
+           if (!uniqueMap.has(q.question_text)) {
+              uniqueMap.set(q.question_text, q);
+           }
+        }
+        allQuestions = Array.from(uniqueMap.values());
 
         if (allQuestions.length === 0) {
           await ParsingJob.findByIdAndUpdate(job._id, { status: 'failed', error: 'Failed to extract any valid questions from the document.' });
