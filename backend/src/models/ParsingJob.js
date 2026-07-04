@@ -4,8 +4,12 @@ const parsingJobSchema = new mongoose.Schema(
   {
     status: {
       type: String,
-      enum: ['pending', 'processing', 'completed', 'failed'],
+      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
       default: 'pending',
+    },
+    fileName: {
+      type: String,
+      default: 'Unknown Document',
     },
     progress: {
       type: Number,

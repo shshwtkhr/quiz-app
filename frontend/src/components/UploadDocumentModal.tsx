@@ -1,6 +1,6 @@
 import { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 import { X, Upload, FileText, CheckCircle2, AlertCircle, Edit2, Plus, Trash2 } from 'lucide-react';
-import { uploadQuestions, uploadDocumentJob, getJobStatus } from '@/lib/api';
+import { uploadQuestions, uploadDocumentJob, getJobStatus, getActiveJobs, cancelJob } from '@/lib/api';
 import { formatMarkdownText } from '@/lib/formatText';
 import BulkEditModal, { EditableField } from './BulkEditModal';
 
@@ -26,6 +26,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [existingSources, setExistingSources] = useState<string[]>([]);
   const [parsedCount, setParsedCount] = useState(0);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [activeJobs, setActiveJobs] = useState<any[]>([]);
   
   // Inline edit state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -106,6 +107,27 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
 
     return () => clearInterval(pollInterval);
   }, [isOpen, status, jobId]);
+
+  // Polling for active background jobs
+  useEffect(() => {
+    let activeJobsInterval: NodeJS.Timeout;
+    
+    if (isOpen) {
+      const fetchJobs = async () => {
+        try {
+          const jobs = await getActiveJobs();
+          setActiveJobs(jobs);
+        } catch (e) {
+          console.error("Failed to fetch active jobs", e);
+        }
+      };
+      
+      fetchJobs();
+      activeJobsInterval = setInterval(fetchJobs, 3000);
+    }
+    
+    return () => clearInterval(activeJobsInterval);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -242,6 +264,18 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const handleCancelParsing = () => {
     localStorage.removeItem('activeUploadJobId');
     resetState();
+  };
+
+  const handleCancelActiveJob = async (idToCancel: string) => {
+    try {
+      await cancelJob(idToCancel);
+      setActiveJobs(prev => prev.filter(j => j._id !== idToCancel));
+      if (jobId === idToCancel) {
+        handleCancelParsing();
+      }
+    } catch (err) {
+      console.error("Failed to cancel job", err);
+    }
   };
 
   const handleEditClick = (index: number, q: any) => {
@@ -735,6 +769,38 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                 Upload & Process
               </button>
             </div>
+
+            {activeJobs.length > 0 && (
+              <div className="mt-6 border-t border-glass-border pt-4 animate-fade-in text-left">
+                <h4 className="text-text-primary font-medium mb-3 text-sm">Background Jobs</h4>
+                <div className="space-y-3 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
+                  {activeJobs.map(job => (
+                    <div key={job._id} className="bg-surface-light/50 rounded-lg p-3 flex justify-between items-center border border-glass-border">
+                      <div className="flex-1 min-w-0 pr-3">
+                        <p className="text-text-primary text-sm font-medium truncate" title={job.fileName || 'Unknown Document'}>
+                          {job.fileName || 'Unknown Document'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-text-muted">
+                            {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <span className="text-[10px] text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                            {job.progress} parsed
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCancelActiveJob(job._id); }}
+                        className="p-1.5 text-danger/70 hover:text-danger bg-surface hover:bg-danger/10 rounded-lg transition-colors border border-danger/20"
+                        title="Stop AI processing"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="py-8 text-center">

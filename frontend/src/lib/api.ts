@@ -115,3 +115,20 @@ export async function getJobStatus(jobId: string): Promise<{
   }
   return res.json();
 }
+
+/** Get all currently active parsing jobs */
+export async function getActiveJobs(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/jobs/active`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to fetch active jobs');
+  return res.json();
+}
+
+/** Cancel an active parsing job */
+export async function cancelJob(jobId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}/cancel`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to cancel job');
+  }
+  return res.json();
+}

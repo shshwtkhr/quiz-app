@@ -12,7 +12,7 @@ const {
   bulkUpdateQuestions,
   deleteQuestions,
 } = require('../controllers/questionController');
-const { uploadDocument, getJobStatus } = require('../controllers/documentController');
+const { uploadDocument, getJobStatus, getActiveJobs, cancelJob } = require('../controllers/documentController');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -22,8 +22,14 @@ router.post('/upload-questions', uploadQuestions);
 // POST /api/upload-document - Upload document to parse and upsert questions
 router.post('/upload-document', upload.single('file'), uploadDocument);
 
+// GET /api/jobs/active - Get all active parsing jobs
+router.get('/jobs/active', getActiveJobs);
+
 // GET /api/jobs/:jobId - Get status of parsing job
 router.get('/jobs/:jobId', getJobStatus);
+
+// POST /api/jobs/:jobId/cancel - Cancel a parsing job
+router.post('/jobs/:jobId/cancel', cancelJob);
 
 // GET /api/topics - Get all unique topics with counts
 router.get('/topics', getTopics);

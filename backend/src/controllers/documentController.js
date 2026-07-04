@@ -197,6 +197,7 @@ exports.uploadDocument = async (req, res, next) => {
     // 2. Create ParsingJob
     const job = await ParsingJob.create({
       status: 'processing',
+      fileName: originalname,
       totalChunks: chunks.length,
       chunksMeta: chunksMeta,
       progress: 0
@@ -246,6 +247,12 @@ Text:
       
       try {
         await asyncBatch(chunks, 1, async (chunk, currentIndex) => {
+          // Check for cancellation before processing this chunk
+          const currentJobCheck = await ParsingJob.findById(job._id).select('status');
+          if (currentJobCheck && (currentJobCheck.status === 'cancelled' || currentJobCheck.status === 'failed')) {
+             throw new Error('Job was cancelled');
+          }
+
           if (!chunk) return;
           const textContent = typeof chunk === 'string' ? chunk : (chunk.text || '');
           if (!chunk.inlineData && !textContent.trim()) return;
@@ -459,6 +466,41 @@ exports.getJobStatus = async (req, res, next) => {
     }
 
     res.json(job);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getActiveJobs = async (req, res, next) => {
+  try {
+    const activeJobs = await ParsingJob.find({
+      status: { $in: ['pending', 'processing'] }
+    }).sort({ createdAt: -1 });
+    
+    res.json(activeJobs);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.cancelJob = async (req, res, next) => {
+  try {
+    const { jobId } = req.params;
+    const job = await ParsingJob.findById(jobId);
+    
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    
+    if (job.status !== 'pending' && job.status !== 'processing') {
+      return res.status(400).json({ error: 'Only active jobs can be cancelled' });
+    }
+
+    job.status = 'cancelled';
+    job.error = 'Cancelled by user';
+    await job.save();
+
+    res.json({ message: 'Job cancelled successfully', job });
   } catch (error) {
     next(error);
   }
