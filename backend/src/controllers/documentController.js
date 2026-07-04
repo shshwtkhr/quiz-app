@@ -90,7 +90,7 @@ exports.uploadDocument = async (req, res, next) => {
       const render_page = (pageData) => {
         let render_options = { normalizeWhitespace: false, disableCombineTextItems: false };
         return pageData.getTextContent(render_options).then(function(textContent) {
-          let lastY, text = '';
+          let lastY, text = `\n___PAGE_START_${pageData.pageIndex + 1}___\n`;
           for (let item of textContent.items) {
             let str = item.str;
             if (item.fontName && str.trim().length > 0) {
@@ -156,19 +156,28 @@ exports.uploadDocument = async (req, res, next) => {
          });
       }
     } else {
-      const maxChunkSize = 15000;
+      const maxChunkSize = 5000;
       let currentChunk = '';
+      let currentPage = '1';
       const paragraphs = extractedText.split(/\n\s*\n/);
       
       for (const p of paragraphs) {
-        if (currentChunk.length + p.length > maxChunkSize && currentChunk.length > 0) {
-          chunks.push(currentChunk);
+        // Extract page marker if present
+        const pageMatch = p.match(/___PAGE_START_(\d+)___/);
+        if (pageMatch) {
+          currentPage = pageMatch[1];
+        }
+        // Remove marker from actual chunk text
+        const cleanP = p.replace(/___PAGE_START_\d+___\n?/g, '');
+        
+        if (currentChunk.length + cleanP.length > maxChunkSize && currentChunk.length > 0) {
+          chunks.push({ text: currentChunk, pageRange: currentPage });
           currentChunk = '';
         }
-        currentChunk += p + '\n\n';
+        currentChunk += cleanP + '\n\n';
       }
       if (currentChunk.trim().length > 0) {
-        chunks.push(currentChunk);
+        chunks.push({ text: currentChunk, pageRange: currentPage });
       }
     }
 
@@ -216,9 +225,11 @@ Text:
       
       try {
         await asyncBatch(chunks, 3, async (chunk, currentIndex) => {
-          if (typeof chunk === 'string' && !chunk.trim()) return;
+          if (!chunk) return;
+          const textContent = typeof chunk === 'string' ? chunk : (chunk.text || '');
+          if (!chunk.inlineData && !textContent.trim()) return;
           
-          const contentsPayload = chunk.inlineData ? [promptBase, chunk] : promptBase + chunk;
+          const contentsPayload = chunk.inlineData ? [promptBase, chunk] : promptBase + textContent;
           
           const fallbackModels = await getAvailableModels(ai);
           let chunkSuccess = false;

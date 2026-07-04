@@ -23,6 +23,10 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, onB
   const [isUpdating, setIsUpdating] = useState(false);
   const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [existingSources, setExistingSources] = useState<string[]>([]);
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   // Fetch sources for datalist
   React.useEffect(() => {
@@ -54,7 +58,9 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, onB
   const groupedQuestions = useMemo(() => {
     const groups: Record<string, Record<string, QuestionData[]>> = {};
     
-    filteredQuestions.forEach((q) => {
+    const paginatedQuestions = filteredQuestions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    
+    paginatedQuestions.forEach((q) => {
       const topic = groupByTopic ? q.topic : 'default';
       const subtopic = q.subtopic || 'No subtopic';
       
@@ -65,7 +71,14 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, onB
     });
     
     return groups;
-  }, [filteredQuestions, groupByTopic]);
+  }, [filteredQuestions, groupByTopic, currentPage]);
+
+  const totalPages = Math.ceil(filteredQuestions.length / itemsPerPage);
+
+  // Reset to page 1 when search changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const toggleSelect = (id: string) => {
     const newSet = new Set(selectedIds);
@@ -431,6 +444,29 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, onB
           ))
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex justify-between items-center mt-6 pt-4 border-t border-glass-border">
+          <button 
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-4 py-2 text-sm font-medium bg-surface-light border border-glass-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface transition-colors"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-text-muted font-medium">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button 
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 text-sm font-medium bg-surface-light border border-glass-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       <BulkEditModal
         isOpen={isBulkEditModalOpen}
