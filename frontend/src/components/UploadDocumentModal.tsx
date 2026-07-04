@@ -840,6 +840,39 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                 )}
               </div>
             )}
+
+            {status !== 'review' && status !== 'saving' && status !== 'uploading' && status !== 'success' && activeJobs.length > 0 && (
+              <div className="mt-8 border-t border-glass-border pt-6 animate-fade-in text-left">
+                <h4 className="text-text-primary font-medium mb-3 text-sm">Other Background Jobs</h4>
+                <div className="space-y-3 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
+                  {activeJobs.map(job => (
+                    <div key={job._id} className="bg-surface-light/50 rounded-lg p-3 flex justify-between items-center border border-glass-border">
+                      <div className="flex-1 min-w-0 pr-3">
+                        <p className="text-text-primary text-sm font-medium truncate" title={job.fileName || 'Unknown Document'}>
+                          {job.fileName || 'Unknown Document'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-text-muted">
+                            {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <span className="text-[10px] text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                            {job.progress} parsed
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCancelActiveJob(job._id); }}
+                        className="p-1.5 text-danger/70 hover:text-danger bg-surface hover:bg-danger/10 rounded-lg transition-colors border border-danger/20"
+                        title="Stop AI processing"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
         )}
       </div>
