@@ -26,7 +26,7 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, onB
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50;
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   // Fetch sources for datalist
   React.useEffect(() => {
@@ -448,23 +448,42 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, onB
       {/* Pagination Controls */}
       {totalPages > 1 && (
         <div className="flex justify-between items-center mt-6 pt-4 border-t border-glass-border">
-          <button 
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="px-4 py-2 text-sm font-medium bg-surface-light border border-glass-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface transition-colors"
-          >
-            Previous
-          </button>
-          <span className="text-sm text-text-muted font-medium">
-            Page {currentPage} of {totalPages}
-          </span>
-          <button 
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="px-4 py-2 text-sm font-medium bg-surface-light border border-glass-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface transition-colors"
-          >
-            Next
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-text-muted">Show:</span>
+            <select 
+              value={itemsPerPage} 
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="bg-surface-light border border-glass-border rounded-lg text-sm text-text-primary px-2 py-1 focus:outline-none focus:border-primary"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 text-sm font-medium bg-surface-light border border-glass-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface transition-colors"
+            >
+              Previous
+            </button>
+            <span className="text-sm text-text-muted font-medium">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button 
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 text-sm font-medium bg-surface-light border border-glass-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface transition-colors"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
 
