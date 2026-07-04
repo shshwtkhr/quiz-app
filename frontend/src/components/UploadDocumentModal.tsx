@@ -38,6 +38,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [isDragSelecting, setIsDragSelecting] = useState(false);
   const [dragSelectMode, setDragSelectMode] = useState<'add' | 'remove' | null>(null);
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -284,6 +288,9 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
 
   const existingTopicNames = existingTopics.map(t => t._id);
 
+  const totalPages = Math.ceil(parsedQuestions.length / itemsPerPage);
+  const paginatedQuestions = parsedQuestions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
       <div 
@@ -345,34 +352,38 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
             )}
 
             <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-              {parsedQuestions.map((q, index) => (
-                <div key={index} className={`p-4 rounded-xl border transition-colors flex gap-4 ${selectedQuestions.has(index) ? 'border-primary/50 bg-primary/5' : 'border-glass-border bg-surface-light/30'}`}>
-                  <div 
-                    className="pt-1 pr-2 pb-2 pl-1 cursor-pointer flex items-start"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      setIsDragSelecting(true);
-                      const mode = selectedQuestions.has(index) ? 'remove' : 'add';
-                      setDragSelectMode(mode);
+              {paginatedQuestions.map((q, pageIdx) => {
+                const index = (currentPage - 1) * itemsPerPage + pageIdx;
+                return (
+                <div 
+                  key={index} 
+                  className={`p-4 rounded-xl border transition-colors flex gap-4 cursor-pointer ${selectedQuestions.has(index) ? 'border-primary/50 bg-primary/5' : 'border-glass-border bg-surface-light/30'}`}
+                  onMouseDown={(e) => {
+                    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input[type="text"]') || (e.target as HTMLElement).closest('select') || (e.target as HTMLElement).closest('textarea')) return;
+                    e.preventDefault();
+                    setIsDragSelecting(true);
+                    const mode = selectedQuestions.has(index) ? 'remove' : 'add';
+                    setDragSelectMode(mode);
+                    const newSet = new Set(selectedQuestions);
+                    if (mode === 'add') newSet.add(index);
+                    else newSet.delete(index);
+                    setSelectedQuestions(newSet);
+                  }}
+                  onMouseEnter={() => {
+                    if (isDragSelecting && dragSelectMode) {
                       const newSet = new Set(selectedQuestions);
-                      if (mode === 'add') newSet.add(index);
+                      if (dragSelectMode === 'add') newSet.add(index);
                       else newSet.delete(index);
                       setSelectedQuestions(newSet);
-                    }}
-                    onMouseEnter={() => {
-                      if (isDragSelecting && dragSelectMode) {
-                        const newSet = new Set(selectedQuestions);
-                        if (dragSelectMode === 'add') newSet.add(index);
-                        else newSet.delete(index);
-                        setSelectedQuestions(newSet);
-                      }
-                    }}
-                  >
+                    }
+                  }}
+                >
+                  <div className="pt-1 pr-2 pb-2 pl-1 flex items-start shrink-0">
                     <input 
                       type="checkbox" 
                       checked={selectedQuestions.has(index)}
                       readOnly
-                      className="w-4 h-4 text-primary bg-surface border-glass-border rounded focus:ring-primary cursor-pointer pointer-events-none"
+                      className="w-4 h-4 text-primary bg-surface border-glass-border rounded focus:ring-primary pointer-events-none"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -383,7 +394,10 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                              <span className="font-semibold not-italic">Passage: </span>{formatMarkdownText(q.context)}
                            </p>
                         )}
-                        <p className="text-text-primary text-sm font-medium line-clamp-2">{formatMarkdownText(q.question_text)}</p>
+                        <p className="text-text-primary text-sm font-medium line-clamp-2">
+                          <span className="text-primary font-bold mr-2">#{index + 1}</span>
+                          {formatMarkdownText(q.question_text)}
+                        </p>
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleEditClick(index, q); }}
@@ -606,8 +620,28 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
                     )}
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
+            
+            {totalPages > 1 && (
+              <div className="flex justify-between items-center mt-4 px-2">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 text-sm bg-surface-light border border-glass-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-text-muted font-medium">Page {currentPage} of {totalPages}</span>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 text-sm bg-surface-light border border-glass-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            )}
             
             <div className="mt-6 pt-4 border-t border-glass-border flex gap-3 shrink-0">
               <button
