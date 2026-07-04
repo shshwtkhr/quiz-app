@@ -450,19 +450,18 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, onB
         <div className="flex justify-between items-center mt-6 pt-4 border-t border-glass-border">
           <div className="flex items-center gap-2">
             <span className="text-sm text-text-muted">Show:</span>
-            <select 
-              value={itemsPerPage} 
+            <input 
+              type="number"
+              min="1"
+              value={itemsPerPage || ''} 
               onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
+                const val = e.target.value ? Math.max(1, Number(e.target.value)) : 1;
+                setItemsPerPage(val);
                 setCurrentPage(1);
               }}
-              className="bg-surface-light border border-glass-border rounded-lg text-sm text-text-primary px-2 py-1 focus:outline-none focus:border-primary"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+              className="w-20 bg-surface-light border border-glass-border rounded-lg text-sm text-text-primary px-2 py-1 focus:outline-none focus:border-primary"
+            />
+            <span className="text-sm text-text-muted">per page</span>
           </div>
           
           <div className="flex items-center gap-4">
