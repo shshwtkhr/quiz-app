@@ -178,11 +178,11 @@ exports.uploadDocument = async (req, res, next) => {
         currentLineIndex++;
       }
       
-      const LINES_PER_CHUNK = 1000;
-      const OVERLAP = 150; // 150 lines overlap ensures passage preservation
+      const maxChunkSize = 250;
+      const overlapSize = 50;
       
-      for (let i = 0; i < textLinesWithIndex.length; i += (LINES_PER_CHUNK - OVERLAP)) {
-        const chunkLines = textLinesWithIndex.slice(i, i + LINES_PER_CHUNK);
+      for (let i = 0; i < textLinesWithIndex.length; i += (maxChunkSize - overlapSize)) {
+        const chunkLines = textLinesWithIndex.slice(i, i + maxChunkSize);
         if (chunkLines.length > 0) {
           chunks.push({ text: chunkLines.join('\n'), isTextIndex: true });
         }
@@ -245,7 +245,7 @@ Text:
 `;
       
       try {
-        await asyncBatch(chunks, 3, async (chunk, currentIndex) => {
+        await asyncBatch(chunks, 1, async (chunk, currentIndex) => {
           if (!chunk) return;
           const textContent = typeof chunk === 'string' ? chunk : (chunk.text || '');
           if (!chunk.inlineData && !textContent.trim()) return;
@@ -305,8 +305,13 @@ Text:
           let lastError = null;
 
           for (const modelName of fallbackModels) {
-            try {
-              const response = await ai.models.generateContent({
+            let retries = 0;
+            const maxRetries = 4;
+            let modelSuccess = false;
+
+            while (retries <= maxRetries && !modelSuccess) {
+              try {
+                const response = await ai.models.generateContent({
                 model: modelName,
                 contents: contentsPayload,
                 config: {
@@ -374,19 +379,35 @@ Text:
               }
               
               chunkSuccess = true;
+              modelSuccess = true;
               break; 
             } catch (err) {
               lastError = err;
               if (err.status === 429 || err.status === 503 || err.status === 404 || (err.message && (err.message.includes('429') || err.message.includes('503') || err.message.includes('404') || err.message.includes('quota') || err.message.toLowerCase().includes('not found') || err.message.includes('NOT_FOUND')))) {
-                 console.warn(`Model ${modelName} hit rate limit or is unavailable, trying next...`);
-                 continue;
+                 if (err.status === 429 || (err.message && err.message.includes('429'))) {
+                    retries++;
+                    if (retries <= maxRetries) {
+                       const waitTime = Math.pow(2, retries) * 2000; // Exponential backoff: 4s, 8s, 16s, 32s
+                       console.warn(`Model ${modelName} rate limited (429). Retrying in ${waitTime}ms... (Attempt ${retries}/${maxRetries})`);
+                       await new Promise(r => setTimeout(r, waitTime));
+                       continue;
+                    }
+                 }
+                 console.warn(`Model ${modelName} hit rate limit/unavailable and max retries exhausted, trying next model...`);
+                 break; // break the retry loop, move to next model
               }
               console.error(`Error parsing chunk with ${modelName}:`, err);
-              chunkSuccess = true; 
-              break;
+              chunkSuccess = true; // Mark as "processed" so we don't retry a hard fail like a bad prompt
+              break; // break retry loop
             }
-          }
+          } // end while retries
           
+          if (chunkSuccess) {
+            // Add a small delay between chunks to respect rate limits
+            await new Promise(r => setTimeout(r, 2000));
+            break; // break model loop
+          }
+        } // end for models          
           if (!chunkSuccess && lastError) {
              throw lastError;
           }
