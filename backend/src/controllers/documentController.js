@@ -127,9 +127,10 @@ exports.uploadDocument = async (req, res, next) => {
     }
 
     const isPdf = mimetype === 'application/pdf' || originalname.endsWith('.pdf');
-    const isImagePdf = isPdf && !extractedText.trim();
+    const textWithoutMarkers = extractedText.replace(/___PAGE_START_\d+___/g, '').trim();
+    const isImagePdf = isPdf && textWithoutMarkers.length === 0;
     
-    if (!extractedText.trim() && !isImagePdf) {
+    if (textWithoutMarkers.length === 0 && !isImagePdf) {
       return res.status(400).json({ error: 'Failed to extract text from the document or document is empty.' });
     }
 
@@ -328,6 +329,9 @@ Text:
               });
 
               const textOutput = response.text;
+              console.log('--- RAW GEMINI OUTPUT ---');
+              console.log(textOutput);
+              console.log('-------------------------');
               let questions = [];
               try {
                  const match = textOutput.match(/\[[\s\S]*\]/);
@@ -342,6 +346,7 @@ Text:
               }
 
               if (Array.isArray(questions) && questions.length > 0) {
+                console.log('DEBUG: Extracted questions:', JSON.stringify(questions, null, 2));
                 let validQuestions = [];
                 
                 if (chunk.inlineData) {
