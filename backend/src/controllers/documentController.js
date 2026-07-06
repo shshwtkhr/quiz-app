@@ -328,7 +328,18 @@ Text:
               });
 
               const textOutput = response.text;
-              const questions = JSON.parse(textOutput);
+              let questions = [];
+              try {
+                 const match = textOutput.match(/\[[\s\S]*\]/);
+                 if (match) {
+                    questions = JSON.parse(match[0]);
+                 } else {
+                    questions = JSON.parse(textOutput);
+                 }
+              } catch (parseError) {
+                 console.error("Failed to parse JSON for chunk:", textOutput.substring(0, 100) + "...", parseError);
+                 throw new Error("Failed to parse JSON response");
+              }
 
               if (Array.isArray(questions) && questions.length > 0) {
                 let validQuestions = [];

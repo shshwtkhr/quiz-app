@@ -6,3 +6,6 @@
 - Once finished working, commit the changes and push the branch.
 - Remind the user to raise a PR to the `main` branch, or use GitHub tools to raise the PR yourself if available.
 - Ask the user for the PR title prefix to be added to the commits/PR.
+
+## Terminal Commands
+- No permission is needed to run terminal commands impacting this project while performing a task. When executing project-related shell commands, run them proactively without asking for the user's explicit permission.
