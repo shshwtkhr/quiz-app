@@ -147,7 +147,7 @@ quiz-app/
 ├── docs/          TECHNICAL_DOCUMENTATION · USER_MANUAL · ai_parsing_explained_simple
 ├── .agents/       AGENTS.md (workflow rules)
 ├── README.md · TESTING_GUIDE.md · AI_UPLOAD_FEATURE.md · LICENSE
-└── test_job.js · test_upload.txt        ← stray root-level scratch files
+└── test_job.js · test_upload.txt        ← stray root-level scratch files (deleted in Phase 3)
 ```
 
 **Version identity is incoherent across five sources:**
@@ -261,6 +261,27 @@ Severity: **P0** blocks correctness/loss · **P1** breaks quality gates or deplo
 | **F-13** | **P3** | Stray root files `test_job.js`, `test_upload.txt`; untracked `backend/test-models.js`; undocumented `backend/drop-db.js`. | `git ls-files` | Clutter; unclear which scripts are supported. |
 | **F-14** | **P3** | Orphaned commit `06338b7` on `origin/TECHDL-10-1.1.0` never merged. | `git log main..origin/TECHDL-10-1.1.0` | 1-line README improvement lost. |
 
+> [!WARNING]
+> **Correction to F-14 (Phase 3).** The finding is accurate that `06338b7` never
+> reached `main`, but wrong about what was lost. Its commit message reads
+> *"Update README with E2E testing details — Added a new section on E2E testing
+> with Playwright"*, and the audit took that at face value. The actual diff is
+> **one added blank line**:
+>
+> ```
+> @@ -17,6 +17,7 @@
+>  - **E2E Testing**: Comprehensive end-to-end testing with **Playwright**, ...
+>
+> +
+>  ## 🧪 Testing
+> ```
+>
+> The E2E Testing section it claims to add was already on `main` and still is.
+> Cherry-picking would have added a stray blank line and nothing else, so it was
+> **not** cherry-picked. Verify with `git show 06338b7 --format="" | cat -A`.
+>
+> The general lesson is worth keeping: a commit message is a claim, not evidence.
+
 ### Documentation accuracy
 
 Verified claim-by-claim against the filesystem:
@@ -284,14 +305,20 @@ Verified claim-by-claim against the filesystem:
 
 Five phases, ordered by *risk retired per unit of effort*. Phases 0–1 are strongly recommended before any further feature work.
 
-> **Status — 1 August 2026.** Phases 0, 1 and 2 are **complete** on `TECHDL-10-1.3.0`.
-> Retired: **F-01 – F-09**. The findings register below is preserved as written
-> at audit time; consult this block for current state.
-> Phases 3–4 remain open. `.gitattributes` (F-10) was *not* pulled forward — it
-> stays in Phase 3, so the CRLF warnings persist.
+> **Status — 1 August 2026.** Phases 0–3 are **complete**. Phases 0–2 shipped on
+> `TECHDL-10-1.3.0` (PRs #17 and #18, both merged); Phase 3 is on
+> `TECHDL-20-1.4.0`. The findings register below is preserved as written at
+> audit time; consult this block for current state.
 >
-> The backend suite went from **17 passed / 3 failed** to **116 passed / 0 failed**
-> across 5 files, and CI now runs backend + frontend on every PR.
+> Retired: **F-01 – F-13**. **Phase 4 remains open** (F-11, F-15 … F-22).
+>
+> - The backend suite went from **17 passed / 3 failed** to **116 passed / 0 failed**
+>   across 5 files, and CI runs backend + frontend on every PR.
+> - **F-14 does not hold — see the correction below.** It is closed as "nothing to
+>   recover", not as "recovered".
+> - **F-12 is partly unfixable.** The typo is baked into merge commits already on
+>   `main`; rewriting that history is not worth it. Only the branch deletion and
+>   the naming convention are actionable.
 
 ```mermaid
 gantt
@@ -372,13 +399,50 @@ Document `BACKEND_ORIGIN` in `.env.example` and the technical doc. **Decision ne
 
 **Retires:** F-08, F-09, F-10, F-13, F-14
 
+> **Done.** Items 1, 2 and 4 were pulled forward into Phase 0 so build artifacts
+> would not enter those commits. Item 3 (`.gitattributes`) landed here — and
+> renormalisation turned out to be a **no-op**, because this checkout has
+> `core.autocrlf=true` and everything was already stored as LF. The warnings
+> were noise about the working copy, not a sign of mixed line endings in the
+> repository; `.gitattributes` makes that a property of the repo instead of of
+> each machine.
+>
+> Item 5 also removed five tracked debugging leftovers in `e2e-test/`
+> (`debug_manage.js` and the three screenshots plus the text dump it generated).
+> Item 6 additionally moved `seed_config.js`, which the plan did not list — see
+> the note under that item. Item 7's cherry-pick was **not** performed; see the
+> F-14 correction above.
+
 1. **`frontend/.gitignore`**: `.next/`, `*.tsbuildinfo`, `node_modules/`, `.env*.local`
 2. **`e2e-test/.gitignore`**: `playwright-report/`, `test-results/`, `node_modules/`
 3. **`.gitattributes`** at root — `* text=auto eol=lf` plus `-text` for `*.webm *.mp4 *.png *.pdf *.docx`. Ends the CRLF churn (F-10).
 4. `git rm --cached` all currently-tracked artifacts (F-08).
 5. Decide the fate of the demo video: keep **one** canonical asset, fix the README path (F-20), and ignore the rest.
 6. Remove/relocate stray scripts (F-13): delete `test_job.js` + `test_upload.txt`; move `test-gemini.js`, `test-models.js`, `test_pdf_bold.js`, `drop-db.js` into `backend/scripts/` and document them.
-7. Cherry-pick orphaned `06338b7` onto the 1.3.0 branch, then delete merged branches `TEHCDL-10-1.2.0` and `TECHDL-10-1.1.0` locally and on origin (F-14, F-12).
+
+   > **As built.** `seed_config.js` was moved too, though the plan did not list
+   > it. The plan's list was drawn from F-13's evidence line, which enumerated
+   > the *problem* files; `seed_config.js` is the one properly-supported script.
+   > Leaving it behind would have put the supported script at `backend/` and the
+   > scratch ones in `backend/scripts/` — exactly backwards for a change whose
+   > stated purpose is making it clear which scripts are supported. All five now
+   > live in `backend/scripts/` with a [README](../backend/scripts/README.md).
+   >
+   > They were also renamed for what they do (`test-gemini` → `check-gemini`,
+   > `test-models` → `list-models`, `test_pdf_bold` → `inspect-pdf-text`): the
+   > `test-` prefix read as test files despite Jest never collecting them.
+   > Two latent bugs surfaced in the process — `inspect-pdf-text` read a
+   > hardcoded absolute path to a file not in the repo (now an argument), and
+   > `list-models` carried a stale copy of the ranking logic Phase 2 extracted
+   > (now imported from `documentParsing.js`, so it cannot drift).
+
+7. ~~Cherry-pick orphaned `06338b7`~~, then delete merged branches `TEHCDL-10-1.2.0` and `TECHDL-10-1.1.0` locally and on origin (F-14, F-12).
+
+   > **The cherry-pick was not performed** — see the F-14 correction above; the
+   > commit contains one blank line and nothing else. Branch deletion is left to
+   > the repository owner: `TEHCDL-10-1.2.0` and `TECHDL-10-1.3.0` are fully
+   > merged into `main` and safe to delete, and `TECHDL-10-1.1.0` holds only
+   > `06338b7`, which is not worth keeping.
 
 ---
 
