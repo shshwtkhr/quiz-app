@@ -19,10 +19,34 @@ const parsingJobSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    chunksMeta: {
-      type: Array,
-      default: [],
-    },
+    chunksMeta: [{
+      chunkIndex: Number,
+      pageRange: String,
+      status: {
+        type: String,
+        enum: ['pending', 'processing', 'completed', 'failed', 'rate_limited'],
+        default: 'pending'
+      },
+      currentModel: {
+        type: String,
+        default: null
+      },
+      attempt: {
+        type: Number,
+        default: 0
+      },
+      message: {
+        type: String,
+        default: 'Waiting to start'
+      },
+      attemptsHistory: [{
+        model: String,
+        attemptNumber: Number,
+        status: String,
+        message: String,
+        timestamp: { type: Date, default: Date.now }
+      }]
+    }],
     parsedQuestions: {
       type: Array,
       default: [],

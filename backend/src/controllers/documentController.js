@@ -7,6 +7,8 @@ const ParsingJob = require('../models/ParsingJob');
 
 let cachedModels = null;
 let lastModelFetch = 0;
+// Global tracker for rate-limited models: modelName -> timeout expiry timestamp
+const globalRateLimits = new Map();
 
 async function getAvailableModels(ai) {
   if (cachedModels && Date.now() - lastModelFetch < 1000 * 60 * 60) {
@@ -57,9 +59,9 @@ async function getAvailableModels(ai) {
     const filteredModels = models.filter(m => getScore(m) > -50);
     
     if (filteredModels.length > 0) {
-      cachedModels = filteredModels;
+      cachedModels = filteredModels; // Use all available models for fallback
       lastModelFetch = Date.now();
-      return filteredModels;
+      return cachedModels;
     }
   } catch (err) {
     console.error("Failed to list models, using hardcoded fallback", err);
@@ -185,14 +187,28 @@ exports.uploadDocument = async (req, res, next) => {
       for (let i = 0; i < textLinesWithIndex.length; i += (maxChunkSize - overlapSize)) {
         const chunkLines = textLinesWithIndex.slice(i, i + maxChunkSize);
         if (chunkLines.length > 0) {
-          chunks.push({ text: chunkLines.join('\n'), isTextIndex: true });
+          let pageRange = null;
+          const firstMatch = chunkLines[0].match(/^\[(\d+)\]/);
+          const lastMatch = chunkLines[chunkLines.length - 1].match(/^\[(\d+)\]/);
+          if (firstMatch && lastMatch) {
+             const firstPage = dictionary[firstMatch[1]]?.page;
+             const lastPage = dictionary[lastMatch[1]]?.page;
+             if (firstPage && lastPage) {
+                pageRange = firstPage === lastPage ? String(firstPage) : `${firstPage}-${lastPage}`;
+             }
+          }
+          chunks.push({ text: chunkLines.join('\n'), isTextIndex: true, pageRange });
         }
       }
     }
 
     const chunksMeta = chunks.map((c, idx) => ({
       chunkIndex: idx,
-      pageRange: c.pageRange || null
+      pageRange: c.pageRange || null,
+      status: 'pending',
+      message: 'Waiting to start',
+      attempt: 0,
+      currentModel: null
     }));
 
     // 2. Create ParsingJob
@@ -258,6 +274,11 @@ Text:
           const textContent = typeof chunk === 'string' ? chunk : (chunk.text || '');
           if (!chunk.inlineData && !textContent.trim()) return;
           
+          await ParsingJob.updateOne(
+            { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+            { $set: { 'chunksMeta.$.status': 'processing', 'chunksMeta.$.message': 'Starting...' } }
+          );
+          
           let contentsPayload;
           let currentSchema;
           
@@ -311,127 +332,195 @@ Text:
           const fallbackModels = await getAvailableModels(ai);
           let chunkSuccess = false;
           let lastError = null;
+          let abortAllModels = false;
 
           for (const modelName of fallbackModels) {
+            if (abortAllModels) break;
+            
+            // If this model is currently in a global timeout, skip it immediately!
+            const rateLimitExpiry = globalRateLimits.get(modelName);
+            if (rateLimitExpiry && Date.now() < rateLimitExpiry) {
+               console.log(`Skipping model ${modelName} because it is globally rate limited until ${new Date(rateLimitExpiry).toLocaleTimeString()}`);
+               continue;
+            }
+            
             let retries = 0;
-            const maxRetries = 4;
+            const maxRetries = 2; // Reduced to fail faster on API quota limits
             let modelSuccess = false;
 
             while (retries <= maxRetries && !modelSuccess) {
               try {
+                await ParsingJob.updateOne(
+                  { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+                  { $set: { 'chunksMeta.$.currentModel': modelName, 'chunksMeta.$.attempt': retries + 1, 'chunksMeta.$.message': `Requesting AI (Attempt ${retries + 1})...` } }
+                );
+
                 const response = await ai.models.generateContent({
-                model: modelName,
-                contents: contentsPayload,
-                config: {
-                  responseMimeType: 'application/json',
-                  responseSchema: currentSchema,
-                },
-              });
+                  model: modelName,
+                  contents: contentsPayload,
+                  config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: currentSchema,
+                  },
+                });
 
-              const textOutput = response.text;
-              console.log('--- RAW GEMINI OUTPUT ---');
-              console.log(textOutput);
-              console.log('-------------------------');
-              let questions = [];
-              try {
-                 const match = textOutput.match(/\[[\s\S]*\]/);
-                 if (match) {
-                    questions = JSON.parse(match[0]);
-                 } else {
-                    questions = JSON.parse(textOutput);
-                 }
-              } catch (parseError) {
-                 console.error("Failed to parse JSON for chunk:", textOutput.substring(0, 100) + "...", parseError);
-                 throw new Error("Failed to parse JSON response");
-              }
+                await ParsingJob.updateOne(
+                  { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+                  { $set: { 'chunksMeta.$.message': `Parsing response...` } }
+                );
 
-              if (Array.isArray(questions) && questions.length > 0) {
-                console.log('DEBUG: Extracted questions:', JSON.stringify(questions, null, 2));
-                let validQuestions = [];
-                
-                if (chunk.inlineData) {
-                  validQuestions = questions.filter(q => {
-                     const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
-                     const hasCorrect = hasOptions && q.options.some(opt => opt.trim() === (q.correct_answer || '').trim());
-                     return q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
-                  });
-                } else {
-                  for (const q of questions) {
-                    try {
-                       if (!q.question_lines || q.question_lines.length === 0) continue;
-                       if (!q.options || q.options.length < 2) continue;
-                       
-                       const getText = (indexes) => {
-                         if (!indexes) return '';
-                         return indexes.map(idx => dictionary[idx]?.text || '').filter(Boolean).join('\n');
-                       };
-                       
-                       const allIdxs = [...(q.context_lines || []), ...q.question_lines];
-                       q.options.forEach(o => allIdxs.push(...(o.lines || [])));
-                       allIdxs.push(...(q.explanation_lines || []));
-                       
-                       const pages = [...new Set(allIdxs.map(idx => dictionary[idx]?.page).filter(Boolean))];
-                       let pageRange = null;
-                       if (pages.length === 1) pageRange = pages[0];
-                       else if (pages.length > 1) pageRange = `${pages[0]}-${pages[pages.length-1]}`;
-                       
-                       const correctOpt = q.options.find(o => o.is_correct);
-                       if (!correctOpt) continue;
-  
-                       validQuestions.push({
-                         topic: q.topic || 'General',
-                         subtopic: q.subtopic || 'General',
-                         context: getText(q.context_lines),
-                         question_text: getText(q.question_lines),
-                         options: q.options.map(o => getText(o.lines)),
-                         correct_answer: getText(correctOpt.lines),
-                         explanation: getText(q.explanation_lines),
-                         pageRange: pageRange
-                       });
-                    } catch (e) {
-                       console.error("Error mapping indexed question:", e);
+                const textOutput = response.text;
+                console.log('--- RAW GEMINI OUTPUT ---');
+                console.log(textOutput);
+                console.log('-------------------------');
+                let questions = [];
+                try {
+                   const match = textOutput.match(/\[[\s\S]*\]/);
+                   if (match) {
+                      questions = JSON.parse(match[0]);
+                   } else {
+                      questions = JSON.parse(textOutput);
+                   }
+                } catch (parseError) {
+                   console.error("Failed to parse JSON for chunk:", textOutput.substring(0, 100) + "...", parseError);
+                   throw new Error("Failed to parse JSON response");
+                }
+
+                if (Array.isArray(questions) && questions.length > 0) {
+                  console.log('DEBUG: Extracted questions:', JSON.stringify(questions, null, 2));
+                  let validQuestions = [];
+                  
+                  if (chunk.inlineData) {
+                    validQuestions = questions.filter(q => {
+                       const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
+                       const hasCorrect = hasOptions && q.options.some(opt => opt.trim() === (q.correct_answer || '').trim());
+                       return q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
+                    });
+                  } else {
+                    for (const q of questions) {
+                      try {
+                         if (!q.question_lines || q.question_lines.length === 0) continue;
+                         if (!q.options || q.options.length < 2) continue;
+                         
+                         const getText = (indexes) => {
+                           if (!indexes) return '';
+                           return indexes.map(idx => dictionary[idx]?.text || '').filter(Boolean).join('\n');
+                         };
+                         
+                         const allIdxs = [...(q.context_lines || []), ...q.question_lines];
+                         q.options.forEach(o => allIdxs.push(...(o.lines || [])));
+                         allIdxs.push(...(q.explanation_lines || []));
+                         
+                         const pages = [...new Set(allIdxs.map(idx => dictionary[idx]?.page).filter(Boolean))];
+                         let pageRange = null;
+                         if (pages.length === 1) pageRange = pages[0];
+                         else if (pages.length > 1) pageRange = `${pages[0]}-${pages[pages.length-1]}`;
+                         
+                         const correctOpt = q.options.find(o => o.is_correct);
+                         if (!correctOpt) continue;
+    
+                         validQuestions.push({
+                           topic: q.topic || 'General',
+                           subtopic: q.subtopic || 'General',
+                           context: getText(q.context_lines),
+                           question_text: getText(q.question_lines),
+                           options: q.options.map(o => getText(o.lines)),
+                           correct_answer: getText(correctOpt.lines),
+                           explanation: getText(q.explanation_lines),
+                           pageRange: pageRange
+                         });
+                      } catch (e) {
+                         console.error("Error mapping indexed question:", e);
+                      }
                     }
                   }
+                  
+                  resultsByChunk[currentIndex] = validQuestions;
+                  totalParsed += validQuestions.length;
+                  
+                  // Update Job Progress
+                  await ParsingJob.findByIdAndUpdate(job._id, { progress: totalParsed });
+                  
+                  await ParsingJob.updateOne(
+                    { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+                    { 
+                      $set: { 'chunksMeta.$.status': 'completed', 'chunksMeta.$.message': `Success: Found ${validQuestions.length} questions` },
+                      $push: { 'chunksMeta.$.attemptsHistory': { model: modelName, attemptNumber: retries + 1, status: 'completed', message: `Success: Found ${validQuestions.length} questions` } }
+                    }
+                  );
+                } else {
+                  await ParsingJob.updateOne(
+                    { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+                    { 
+                      $set: { 'chunksMeta.$.status': 'completed', 'chunksMeta.$.message': `Success: No questions found` },
+                      $push: { 'chunksMeta.$.attemptsHistory': { model: modelName, attemptNumber: retries + 1, status: 'completed', message: `Success: No questions found` } }
+                    }
+                  );
                 }
                 
-                resultsByChunk[currentIndex] = validQuestions;
-                totalParsed += validQuestions.length;
+                chunkSuccess = true;
+                modelSuccess = true;
+                break; 
+              } catch (err) {
+                lastError = err;
+                 if (err.status === 429 || err.status === 503 || err.status === 404 || (err.message && (err.message.includes('429') || err.message.includes('503') || err.message.includes('404') || err.message.includes('quota') || err.message.toLowerCase().includes('not found') || err.message.includes('NOT_FOUND')))) {
+                   if (err.status === 429 || (err.message && err.message.includes('429'))) {
+                      retries++;
+                      if (retries <= maxRetries) {
+                         const waitTime = Math.pow(2, retries) * 1000; // Exponential backoff: 2s, 4s
+                         console.warn(`Model ${modelName} rate limited (429). Retrying in ${waitTime}ms... (Attempt ${retries}/${maxRetries})`);
+                         
+                         await ParsingJob.updateOne(
+                           { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+                           { 
+                             $set: { 'chunksMeta.$.status': 'rate_limited', 'chunksMeta.$.message': `Rate limited, retrying in ${waitTime/1000}s...` },
+                             $push: { 'chunksMeta.$.attemptsHistory': { model: modelName, attemptNumber: retries, status: 'rate_limited', message: `Rate limited, retrying in ${waitTime/1000}s...` } }
+                           }
+                         );
+                         
+                         await new Promise(r => setTimeout(r, waitTime));
+                         continue;
+                      }
+                   }
+                   
+                   // After exhausting retries (or if it's a 503/Quota), put this specific model in a 1-minute global timeout
+                   const timeoutMinutes = 1;
+                   globalRateLimits.set(modelName, Date.now() + (timeoutMinutes * 60 * 1000));
+                   console.warn(`Model ${modelName} hit rate limit/unavailable and max retries exhausted. Placed in global timeout for ${timeoutMinutes} minute(s).`);
+                   
+                   await ParsingJob.updateOne(
+                     { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+                     { $push: { 'chunksMeta.$.attemptsHistory': { model: modelName, attemptNumber: retries + 1, status: 'failed', message: `Rate limit/quota exhausted.` } } }
+                   );
+                   
+                   // DO NOT abortAllModels. We want to fallback to the next model!
+                   break; // break the retry loop, but continue to the next model in the fallback array
+                }
+                console.error(`Error parsing chunk with ${modelName}:`, err);
                 
-                // Update Job Progress
-                await ParsingJob.findByIdAndUpdate(job._id, { progress: totalParsed });
+                await ParsingJob.updateOne(
+                  { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+                  { $push: { 'chunksMeta.$.attemptsHistory': { model: modelName, attemptNumber: retries + 1, status: 'failed', message: err.message || 'Unknown error' } } }
+                );
+                
+                // If it's a bad response/JSON parse error, we SHOULD fallback to the next model.
+                // We do NOT set abortAllModels = true here.
+                break; // break retry loop, move to next model
               }
-              
-              chunkSuccess = true;
-              modelSuccess = true;
-              break; 
-            } catch (err) {
-              lastError = err;
-              if (err.status === 429 || err.status === 503 || err.status === 404 || (err.message && (err.message.includes('429') || err.message.includes('503') || err.message.includes('404') || err.message.includes('quota') || err.message.toLowerCase().includes('not found') || err.message.includes('NOT_FOUND')))) {
-                 if (err.status === 429 || (err.message && err.message.includes('429'))) {
-                    retries++;
-                    if (retries <= maxRetries) {
-                       const waitTime = Math.pow(2, retries) * 2000; // Exponential backoff: 4s, 8s, 16s, 32s
-                       console.warn(`Model ${modelName} rate limited (429). Retrying in ${waitTime}ms... (Attempt ${retries}/${maxRetries})`);
-                       await new Promise(r => setTimeout(r, waitTime));
-                       continue;
-                    }
-                 }
-                 console.warn(`Model ${modelName} hit rate limit/unavailable and max retries exhausted, trying next model...`);
-                 break; // break the retry loop, move to next model
-              }
-              console.error(`Error parsing chunk with ${modelName}:`, err);
-              chunkSuccess = true; // Mark as "processed" so we don't retry a hard fail like a bad prompt
-              break; // break retry loop
+            } // end while retries
+            
+            if (chunkSuccess) {
+              // Add a small delay between chunks to respect rate limits
+              await new Promise(r => setTimeout(r, 2000));
+              break; // break model loop
             }
-          } // end while retries
+          } // end for models
           
-          if (chunkSuccess) {
-            // Add a small delay between chunks to respect rate limits
-            await new Promise(r => setTimeout(r, 2000));
-            break; // break model loop
-          }
-        } // end for models          
           if (!chunkSuccess && lastError) {
+             await ParsingJob.updateOne(
+               { _id: job._id, 'chunksMeta.chunkIndex': currentIndex },
+               { $set: { 'chunksMeta.$.status': 'failed', 'chunksMeta.$.message': `Failed: ${lastError.message || 'Unknown error'}` } }
+             );
              throw lastError;
           }
         });
