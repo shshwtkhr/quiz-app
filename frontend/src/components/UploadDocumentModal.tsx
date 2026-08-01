@@ -1,14 +1,9 @@
 import { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 import { X, Upload, FileText, CheckCircle2, AlertCircle, Edit2, Plus, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
-import { uploadQuestions, uploadDocumentJob, getJobStatus, getActiveJobs, cancelJob } from '@/lib/api';
+import { uploadQuestions, uploadDocumentJob, getJobStatus, getActiveJobs, cancelJob, fetchTopics, fetchSources } from '@/lib/api';
 import { formatMarkdownText } from '@/lib/formatText';
 import BulkEditModal, { EditableField } from './BulkEditModal';
-
-interface TopicData {
-  _id: string;
-  count: number;
-  subtopics: { name: string; count: number }[];
-}
+import { TopicInfo } from '@/types';
 
 interface UploadDocumentModalProps {
   isOpen: boolean;
@@ -22,7 +17,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [status, setStatus] = useState<'idle' | 'uploading' | 'parsing' | 'review' | 'saving' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
-  const [existingTopics, setExistingTopics] = useState<TopicData[]>([]);
+  const [existingTopics, setExistingTopics] = useState<TopicInfo[]>([]);
   const [existingSources, setExistingSources] = useState<string[]>([]);
   const [parsedCount, setParsedCount] = useState(0);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -85,11 +80,9 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
             
             // Fetch topics and sources for the review screen
             try {
-              const topicsRes = await fetch('http://localhost:5000/api/topics');
-              if (topicsRes.ok) setExistingTopics(await topicsRes.json());
-              
-              const sourcesRes = await fetch('http://localhost:5000/api/sources');
-              if (sourcesRes.ok) setExistingSources(await sourcesRes.json());
+              const [topics, sources] = await Promise.all([fetchTopics(), fetchSources()]);
+              setExistingTopics(topics);
+              setExistingSources(sources);
             } catch (e) {
               console.error('Failed to fetch topics/sources', e);
             }
@@ -101,6 +94,13 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
             setErrorMessage(job.error || 'Parsing failed in background.');
             localStorage.removeItem('activeUploadJobId');
             setJobId(null);
+          } else if (job.status === 'cancelled') {
+            // Cancelled elsewhere (another tab, or before this session resumed
+            // the job). Stop polling and return to the upload screen — this is a
+            // deliberate stop, not a failure.
+            clearInterval(pollInterval);
+            localStorage.removeItem('activeUploadJobId');
+            resetState();
           }
         } catch (error: any) {
           console.error('Polling error:', error);
@@ -227,16 +227,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const handleSave = async () => {
     setStatus('saving');
     try {
-      const response = await fetch('http://localhost:5000/api/upload-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsedQuestions),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.error || 'Save failed');
-      }
+      await uploadQuestions(parsedQuestions);
 
       setStatus('success');
       localStorage.removeItem('activeUploadJobId');

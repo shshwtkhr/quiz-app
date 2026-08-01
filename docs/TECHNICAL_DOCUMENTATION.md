@@ -250,10 +250,12 @@ quiz-app/
 │   │   └── QuizEngine.test.tsx      # Component unit tests
 │   ├── jest.config.ts
 │   ├── jest.setup.ts
-│   ├── next.config.ts
+│   ├── next.config.ts               # /api rewrite proxy → BACKEND_ORIGIN
 │   ├── tsconfig.json
 │   ├── postcss.config.mjs
-│   └── package.json
+│   ├── package.json
+│   ├── .env.example
+│   └── .env.local
 │
 ├── e2e-test/
 │   ├── tests/
@@ -384,6 +386,8 @@ const connectDB = require('./src/config/db');
 | `attemptsHistory` | `Array` | `[]` | Log of every attempt: `{ model, attemptNumber, status, message, timestamp }` |
 
 **Lifecycle:** Created when a document is uploaded, with `chunksMeta` pre-populated (`status: 'pending'`) for every chunk. Updated live during processing — both the top-level `progress` count and each chunk's `chunksMeta` entry. Finalized with `status: 'completed'` + `parsedQuestions`, `status: 'failed'` + `error`, or `status: 'cancelled'` (set by `POST /api/jobs/:jobId/cancel`) + `error: 'Cancelled by user'`.
+
+**Terminal states are final.** `completed`, `failed` and `cancelled` are all written conditionally on the job still being `processing`, so the background worker can never overwrite a status set out from under it.
 
 #### Config Model
 
@@ -528,7 +532,11 @@ Cancel an in-progress or pending parsing job.
 
 **URL Parameter:** `jobId` — MongoDB ObjectId of the ParsingJob
 
-**Behavior:** Sets `status: 'cancelled'` and `error: 'Cancelled by user'` on the job document. Before starting each chunk, the background loop re-reads the job's `status` from MongoDB and aborts processing if it is `cancelled` (or `failed`) — so cancellation takes effect between chunks, not mid-request.
+**Behavior:** Conditionally sets `status: 'cancelled'` and `error: 'Cancelled by user'` — the update is applied via `findOneAndUpdate` matching `status ∈ {pending, processing}`, so a job that reaches a terminal state between the read and the write is never re-opened.
+
+Before starting each chunk, the background loop re-reads the job's `status` from MongoDB and aborts if it is anything other than `processing` — so cancellation takes effect between chunks, not mid-request.
+
+**Cancellation is not failure.** The abort raises a `JobCancelledError` sentinel, which the worker's outer `catch` recognises and returns from without writing any status. All three terminal writes (`completed`, `failed`, and the "no questions extracted" failure) additionally go through a guard matching `status: 'processing'`, so none of them can demote a job that is already `cancelled`. A cancelled job therefore stays `cancelled`, and cancelled jobs remain distinguishable from crashed ones in the data.
 
 **Response `200`:**
 ```json
@@ -824,7 +832,7 @@ Results are cached for **1 hour**. On API failure, falls back to hardcoded list:
 
 #### Step 6: Sequential Chunk Processing
 
-Uses a custom `asyncBatch(items, limit=1, callback)` helper — chunks are processed **one at a time** (not concurrently). Before each chunk starts, the job's `status` is re-read from MongoDB; if it has been set to `cancelled` or `failed` (e.g. via `POST /api/jobs/:jobId/cancel`), processing stops immediately.
+Uses a custom `asyncBatch(items, limit=1, callback)` helper — chunks are processed **one at a time** (not concurrently). Before each chunk starts, the job's `status` is re-read from MongoDB; if it is no longer `processing` (e.g. cancelled via `POST /api/jobs/:jobId/cancel`), a `JobCancelledError` is thrown and processing stops immediately without altering the recorded status.
 
 #### Step 7: Gemini API Call, Retries & Fallback
 
@@ -848,7 +856,9 @@ Each extracted question is validated:
 
 After each chunk completes, the `ParsingJob.progress` field is updated with the running count of parsed questions, and the chunk's `chunksMeta` entry is marked `completed` or `failed`. On completion, the job transitions to `status: 'completed'` with `parsedQuestions` populated. On failure, `status: 'failed'` with an `error` message. On user cancellation, `status: 'cancelled'`.
 
-The frontend polls `GET /api/jobs/:jobId` every 2.5 seconds to check progress and retrieve results, and separately polls `GET /api/jobs/active` to show all in-flight background jobs (with cancel controls) regardless of which job the current modal session is tracking.
+Every terminal write goes through a `findOneAndUpdate({ _id, status: 'processing' }, …)` guard, so a job that was cancelled while the last chunk was in flight keeps its `cancelled` status instead of being overwritten.
+
+The frontend polls `GET /api/jobs/:jobId` every 2.5 seconds to check progress and retrieve results, and separately polls `GET /api/jobs/active` to show all in-flight background jobs (with cancel controls) regardless of which job the current modal session is tracking. The poller treats `cancelled` as a terminal state: it stops polling, clears the stored `activeUploadJobId`, and returns to the upload screen without showing an error.
 
 ### 5.7. Error Handling
 
@@ -1172,10 +1182,11 @@ interface AnswerKeyEntry {
 // Answer key map
 type AnswerKey = Record<string, AnswerKeyEntry>;
 
-// Topic from API
+// Topic from API (GET /api/topics aggregates subtopics alongside the count)
 interface TopicInfo {
   _id: string;
   count: number;
+  subtopics: { name: string; count: number }[];
 }
 
 // UI state for topic selection
@@ -1192,15 +1203,18 @@ interface TopicSelection {
 [api.ts](file:///e:/Projects/quiz-app/frontend/src/lib/api.ts) provides typed `fetch` wrappers for all API endpoints:
 
 **Base URL:**
-- **In the browser:** always the relative path `/api` — requests are same-origin and proxied server-side by the Next.js rewrite in [next.config.ts](file:///e:/Projects/quiz-app/frontend/next.config.ts) (`/api/:path*` → `http://localhost:5000/api/:path*`).
-- **On the server (SSR/build):** `process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'`
+- **In the browser:** always the relative path `/api` — requests are same-origin and proxied server-side by the Next.js rewrite in [next.config.ts](file:///e:/Projects/quiz-app/frontend/next.config.ts) (`/api/:path*` → `${BACKEND_ORIGIN}/api/:path*`).
+- **On the server (SSR/build):** `${process.env.BACKEND_ORIGIN}/api`, falling back to `process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'`.
 
-> [!WARNING]
-> The rewrite destination is currently **hardcoded** to `http://localhost:5000`, not read from `NEXT_PUBLIC_API_URL` or any other env var. This works for local development but means a production/deployed build where the backend isn't reachable at `localhost:5000` from the frontend server will have all client-side API calls fail. If deploying, either parameterize the rewrite destination from an env var or revert the client to using `NEXT_PUBLIC_API_URL` directly.
+Both the rewrite destination and the SSR base are driven by the single `BACKEND_ORIGIN` variable, so a deployment only needs to point that one value at wherever the backend actually lives (e.g. `http://backend:5000` in a container network).
+
+> [!IMPORTANT]
+> **Every** backend call must go through `lib/api.ts`. Components must not construct backend URLs themselves — a hardcoded absolute URL bypasses the rewrite proxy, reintroduces a cross-origin request, and breaks in any non-local deployment.
 
 | Function | HTTP Method | Endpoint | Returns |
 |---|---|---|---|
 | `fetchTopics()` | GET | `/topics` | `Promise<TopicInfo[]>` |
+| `fetchSources()` | GET | `/sources` | `Promise<string[]>` |
 | `fetchQuestionsByTopic(topic)` | GET | `/topics/{topic}/questions` | `Promise<QuestionData[]>` |
 | `searchQuestions(query)` | GET | `/questions/search?q={query}` | `Promise<QuestionData[]>` |
 | `deleteQuestions(ids)` | DELETE | `/questions` | `Promise<{ message, deletedCount }>` |
@@ -1267,11 +1281,12 @@ Create a `.env` file in the `backend/` directory (see [.env.example](file:///e:/
 
 ### Frontend Environment Variables
 
-Create a `.env.local` file in the `frontend/` directory:
+Create a `.env.local` file in the `frontend/` directory (see [.env.example](file:///e:/Projects/quiz-app/frontend/.env.example)):
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `NEXT_PUBLIC_API_URL` | ❌ | `http://localhost:5000/api` | Backend API base URL |
+| `BACKEND_ORIGIN` | ❌ | `http://localhost:5000` | Origin of the Express backend **as seen from the Next.js server**. Drives both the `/api/:path*` rewrite destination and the SSR API base. Server-only — deliberately not `NEXT_PUBLIC_`, since the browser never calls the backend directly. |
+| `NEXT_PUBLIC_API_URL` | ❌ | `http://localhost:5000/api` | Legacy direct-call base. Only consulted for SSR when `BACKEND_ORIGIN` is unset. |
 
 ---
 

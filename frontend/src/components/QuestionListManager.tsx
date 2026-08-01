@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { QuestionData } from '@/types';
 import { Search, Trash2, Edit2, Save, X, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { formatMarkdownText } from '@/lib/formatText';
+import { fetchSources } from '@/lib/api';
 import BulkEditModal, { EditableField } from './BulkEditModal';
 
 interface QuestionListManagerProps {
@@ -30,8 +31,7 @@ export default function QuestionListManager({ questions, onDelete, onUpdate, onB
 
   // Fetch sources for datalist
   React.useEffect(() => {
-    fetch('http://localhost:5000/api/sources')
-      .then(res => res.json())
+    fetchSources()
       .then(data => setExistingSources(data || []))
       .catch(err => console.error('Failed to fetch sources', err));
   }, []);

@@ -213,6 +213,11 @@ The single most consequential fact in this audit:
 
 > **7 commits and ~464 lines of uncommitted changes — the entire v1.3.0 feature set — exist only in one local working copy, with no remote backup and no PR.**
 
+> [!NOTE]
+> **Resolved.** Phase 0 committed the working tree in three slices and pushed
+> `TECHDL-10-1.3.0` to `origin`. The paragraph above is retained as the audit-time
+> record of why Phase 0 was sequenced first.
+
 Uncommitted working tree at audit time (14 files, +464/−184):
 - `backend/src/controllers/documentController.js` (+303/−…) — rate-limit/telemetry rewrite
 - `backend/src/models/ParsingJob.js` — `chunksMeta` schema formalisation
@@ -278,6 +283,12 @@ Verified claim-by-claim against the filesystem:
 ## 5. Phased Remediation Plan
 
 Five phases, ordered by *risk retired per unit of effort*. Phases 0–1 are strongly recommended before any further feature work.
+
+> **Status — 1 August 2026.** Phases 0 and 1 are **complete** on `TECHDL-10-1.3.0`.
+> Retired: **F-01, F-02, F-03, F-07, F-08, F-09**. The findings register below is
+> preserved as written at audit time; consult this block for current state.
+> Phases 2–4 remain open. `.gitattributes` (F-10) was *not* pulled forward — it
+> stays in Phase 3, so the CRLF warnings persist.
 
 ```mermaid
 gantt

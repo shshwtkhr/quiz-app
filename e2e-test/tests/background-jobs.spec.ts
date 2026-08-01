@@ -36,8 +36,8 @@ test.describe('Background Jobs Modal UI', () => {
     // 3. Navigate to the app
     await page.goto('/');
 
-    // 4. Open the Upload Modal
-    await page.click('text=Upload Questions');
+    // 4. Open the Upload Modal (button is labelled "Upload Document" in QuizConfig)
+    await page.click('text=Upload Document');
 
     // 5. Verify the "Background Jobs" section appears and shows our mock job
     await expect(page.locator('h4:has-text("Background Jobs")').first()).toBeVisible();

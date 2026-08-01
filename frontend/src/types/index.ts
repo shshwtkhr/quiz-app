@@ -28,6 +28,7 @@ export type AnswerKey = Record<string, AnswerKeyEntry>;
 export interface TopicInfo {
   _id: string;
   count: number;
+  subtopics: { name: string; count: number }[];
 }
 
 /** User's topic selection for quiz configuration */
