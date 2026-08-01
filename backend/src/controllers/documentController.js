@@ -10,6 +10,20 @@ let lastModelFetch = 0;
 // Global tracker for rate-limited models: modelName -> timeout expiry timestamp
 const globalRateLimits = new Map();
 
+/**
+ * Thrown when the background worker notices the job has already reached a
+ * terminal state (typically 'cancelled' via POST /api/jobs/:jobId/cancel).
+ * It is a control-flow signal, not an error: the status on record is
+ * authoritative and must not be overwritten with 'failed'.
+ */
+class JobCancelledError extends Error {
+  constructor(status) {
+    super(`Job is no longer processing (status: ${status})`);
+    this.name = 'JobCancelledError';
+    this.jobStatus = status;
+  }
+}
+
 async function getAvailableModels(ai) {
   if (cachedModels && Date.now() - lastModelFetch < 1000 * 60 * 60) {
     return cachedModels;
@@ -231,6 +245,14 @@ exports.uploadDocument = async (req, res, next) => {
       let totalParsed = 0;
       let resultsByChunk = new Array(chunks.length);
 
+      /**
+       * Write the job's terminal state, but only while it is still running.
+       * If the user cancelled in the meantime the update matches nothing and
+       * the 'cancelled' status survives.
+       */
+      const finishJob = (update) =>
+        ParsingJob.findOneAndUpdate({ _id: job._id, status: 'processing' }, update);
+
       const asyncBatch = async (items, limit, asyncCallback) => {
         let index = 0;
         const workers = Array.from({ length: limit }).map(async () => {
@@ -266,8 +288,8 @@ Text:
         await asyncBatch(chunks, 1, async (chunk, currentIndex) => {
           // Check for cancellation before processing this chunk
           const currentJobCheck = await ParsingJob.findById(job._id).select('status');
-          if (currentJobCheck && (currentJobCheck.status === 'cancelled' || currentJobCheck.status === 'failed')) {
-             throw new Error('Job was cancelled');
+          if (currentJobCheck && currentJobCheck.status !== 'processing') {
+             throw new JobCancelledError(currentJobCheck.status);
           }
 
           if (!chunk) return;
@@ -537,22 +559,29 @@ Text:
         allQuestions = Array.from(uniqueMap.values());
 
         if (allQuestions.length === 0) {
-          await ParsingJob.findByIdAndUpdate(job._id, { status: 'failed', error: 'Failed to extract any valid questions from the document.' });
+          await finishJob({ status: 'failed', error: 'Failed to extract any valid questions from the document.' });
           return;
         }
 
-        await ParsingJob.findByIdAndUpdate(job._id, {
+        await finishJob({
           status: 'completed',
           parsedQuestions: allQuestions
         });
 
       } catch (error) {
+        // A cancelled (or otherwise already-terminal) job is not a failure —
+        // the status on record is authoritative, so leave it alone.
+        if (error instanceof JobCancelledError) {
+          console.log(`Background job ${job._id} stopped early: ${error.message}`);
+          return;
+        }
+
         console.error('Background job error:', error);
         let errorMessage = 'An unexpected error occurred during processing.';
         if (error.status === 429 || error.status === 503 || (error.message && (error.message.includes('429') || error.message.includes('503') || error.message.includes('quota')))) {
            errorMessage = 'AI API Rate limit exceeded or service unavailable. Please try again later.';
         }
-        await ParsingJob.findByIdAndUpdate(job._id, { status: 'failed', error: errorMessage });
+        await finishJob({ status: 'failed', error: errorMessage });
       }
     })();
 
@@ -591,19 +620,22 @@ exports.getActiveJobs = async (req, res, next) => {
 exports.cancelJob = async (req, res, next) => {
   try {
     const { jobId } = req.params;
-    const job = await ParsingJob.findById(jobId);
-    
+
+    // Conditional update rather than read-modify-write, so a job that reaches a
+    // terminal state between the read and the write is not silently re-opened.
+    const job = await ParsingJob.findOneAndUpdate(
+      { _id: jobId, status: { $in: ['pending', 'processing'] } },
+      { status: 'cancelled', error: 'Cancelled by user' },
+      { new: true }
+    );
+
     if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-    
-    if (job.status !== 'pending' && job.status !== 'processing') {
+      const exists = await ParsingJob.exists({ _id: jobId });
+      if (!exists) {
+        return res.status(404).json({ error: 'Job not found' });
+      }
       return res.status(400).json({ error: 'Only active jobs can be cancelled' });
     }
-
-    job.status = 'cancelled';
-    job.error = 'Cancelled by user';
-    await job.save();
 
     res.json({ message: 'Job cancelled successfully', job });
   } catch (error) {

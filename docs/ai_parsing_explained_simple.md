@@ -32,7 +32,14 @@ Here is what the Head Librarian does when they see the STOP sign:
 ## 5. 📺 Watching the Robots Work (Live Tracking)
 Because reading a huge book takes time, the librarian set up a TV screen for you! If you look in the app, you can see a live, expanding list of exactly what the robots are doing for each chunk. You can see which specific robot is working, if they had to retry, and when they are finished with a chunk!
 
-## 6. 🧩 Putting the Puzzle Together (Parsing)
+## 6. 🛑 Changing Your Mind (Cancelling)
+What if you handed over the wrong book? You can press the "Stop" button at any time!
+
+The Head Librarian checks the note on your book before starting *every single chunk*. The moment the note says **"Cancelled"**, the librarian quietly puts the book down and walks away — no fuss, no scary red error message.
+
+This is important: **stopping on purpose is not the same as something breaking.** The librarian is never allowed to scribble "FAILED" over a book you deliberately cancelled, and never allowed to write "Finished!" on it either. Once you say stop, the note stays exactly as you left it — so later you can always tell the difference between "I changed my mind" and "something went wrong."
+
+## 7. 🧩 Putting the Puzzle Together (Parsing)
 When a robot successfully reads a chunk, it looks for five things:
 1. The **Topic** (What is this about?)
 2. The **Question**
@@ -42,7 +49,7 @@ When a robot successfully reads a chunk, it looks for five things:
 
 The robot hands back a perfect puzzle piece with all this information nicely organized!
 
-## 7. 🏆 The Grand Finale (Saving to Database)
+## 8. 🏆 The Grand Finale (Saving to Database)
 Once all the chunks are read and turned into puzzle pieces, the Head Librarian puts them all together. If the robots accidentally found the exact same question twice, the librarian throws the extra one away (this is called **Deduplication**). 
 
 Finally, the librarian puts all your brand-new quiz questions on the shelf (the Database), and your game is ready to play! 🎉
