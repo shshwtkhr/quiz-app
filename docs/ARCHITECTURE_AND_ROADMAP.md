@@ -284,11 +284,14 @@ Verified claim-by-claim against the filesystem:
 
 Five phases, ordered by *risk retired per unit of effort*. Phases 0–1 are strongly recommended before any further feature work.
 
-> **Status — 1 August 2026.** Phases 0 and 1 are **complete** on `TECHDL-10-1.3.0`.
-> Retired: **F-01, F-02, F-03, F-07, F-08, F-09**. The findings register below is
-> preserved as written at audit time; consult this block for current state.
-> Phases 2–4 remain open. `.gitattributes` (F-10) was *not* pulled forward — it
+> **Status — 1 August 2026.** Phases 0, 1 and 2 are **complete** on `TECHDL-10-1.3.0`.
+> Retired: **F-01 – F-09**. The findings register below is preserved as written
+> at audit time; consult this block for current state.
+> Phases 3–4 remain open. `.gitattributes` (F-10) was *not* pulled forward — it
 > stays in Phase 3, so the CRLF warnings persist.
+>
+> The backend suite went from **17 passed / 3 failed** to **116 passed / 0 failed**
+> across 5 files, and CI now runs backend + frontend on every PR.
 
 ```mermaid
 gantt
