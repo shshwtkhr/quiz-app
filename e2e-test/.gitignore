@@ -10,3 +10,11 @@ playwright/.cache/
 # local env
 .env
 .env*.local
+
+# ad-hoc debugging output — screenshots and page dumps from one-off scripts
+# kept walking into commits. The canonical demo recording (quiz_app_demo.mp4)
+# is tracked deliberately and is not matched by these.
+*.png
+*.jpg
+page_text.txt
+debug_*.js
