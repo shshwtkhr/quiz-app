@@ -1,6 +1,8 @@
 import { TopicInfo, Question, AnswerKey, QuestionData } from '@/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE = typeof window !== 'undefined'
+  ? '/api'
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api');
 
 /** Fetch all available topics with question counts */
 export async function fetchTopics(): Promise<{ _id: string; count: number }[]> {

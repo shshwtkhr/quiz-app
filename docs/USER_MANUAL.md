@@ -258,6 +258,18 @@ When you upload a document, the AI processes it as a **background job**:
 > [!NOTE]
 > The background job ID is saved in your browser's localStorage. This means parsing survives modal close and even page refreshes. If you close the browser entirely, the job still runs on the server — just reopen the app and the upload modal to check its status.
 
+#### Background Jobs Panel
+
+Anywhere in the upload modal (the initial drop-zone screen, the parsing spinner screen, or the Review screen), you may see a **Background Jobs** panel listing every document currently being parsed on the server — not just the one you started:
+
+- Each job shows its **file name**, upload time, questions parsed so far, and a **chunk counter** (e.g. "3 / 8 chunks")
+- Click a job to **expand** it and see a **live, per-chunk progress list**: which page range it covers, whether it's pending/processing/completed/failed/rate-limited, which AI model is currently handling it, and the current attempt number
+- Expand an individual chunk further to see its full **attempt history** — every model tried, whether it succeeded, was rate-limited, or failed, and when
+- Click the **✕ (Stop)** button on any job to cancel it — this immediately stops that job from processing further chunks
+
+> [!TIP]
+> This is useful if you accidentally start parsing a large document and want to stop it, or if you're curious why a document is taking a while (e.g. it's automatically retrying a rate-limited AI model).
+
 #### Reviewing Parsed Questions
 
 After the AI finishes, you enter the **Review** screen where you can:
@@ -526,7 +538,9 @@ The main landing page where you configure quizzes and access all features.
 | **Drop zone** | Drag-and-drop area with file type labels |
 | **File info** | Selected file name, size, and type |
 | **Progress** | Status text + question counter + "Hide Progress" button |
-| **Review list** | Scrollable question list with inline edit, topic/subtopic/source dropdowns |
+| **Background Jobs** | Expandable list of all in-progress jobs, with live per-chunk status and a Stop (cancel) button per job |
+| **Job Summary** (Review screen) | Live per-chunk progress card for the job just completed |
+| **Review list** | Scrollable, paginated question list with inline edit, topic/subtopic/source dropdowns |
 | **Bulk bar** | Appears when questions selected — Bulk Edit button + Delete Selected |
 | **Bulk Edit Modal** | Field selector dropdown + value input + Apply to All |
 | **Action buttons** | Discard & Close, Save Questions |
@@ -580,6 +594,8 @@ The main landing page where you configure quizzes and access all features.
 | Image-based PDF returns no results | Image PDFs are supported — the AI processes them page by page. Ensure the scanned text is legible |
 | AI generates low-quality questions | Review and edit questions before saving. The AI works best with structured educational content |
 | Reopening modal doesn't show progress | The job ID is stored in localStorage — try clearing localStorage if the job has already completed |
+| Parsing seems to hang on one chunk | Expand the chunk in the Background Jobs panel — it may be retrying a rate-limited AI model (up to 2 retries with backoff before it automatically falls back to the next model) |
+| Need to stop an upload that's taking too long | Open the Background Jobs panel and click the **✕ (Stop)** button on that job — it cancels within a chunk or two |
 
 ### Quiz Issues
 
@@ -618,6 +634,9 @@ A: Quiz session data (current quiz, answers, timer) is stored in browser memory 
 
 **Q: Can I close the browser during document parsing?**  
 A: Yes! Document parsing runs as a background job on the server. The job ID is saved in your browser's localStorage, so when you reopen the app and the upload modal, it will automatically check on the job's status and show you the results when ready.
+
+**Q: Can I cancel a document upload that's in progress?**  
+A: Yes. Open the upload modal — any in-progress job (yours or one started elsewhere) appears in the **Background Jobs** panel with a Stop button. Cancelling stops the job before its next chunk starts processing; a chunk already in flight to the AI still finishes, but its results aren't used.
 
 ### AI & Document Processing
 

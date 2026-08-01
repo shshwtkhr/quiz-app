@@ -361,15 +361,29 @@ const connectDB = require('./src/config/db');
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `status` | `String` | `'pending'` | Enum: `pending`, `processing`, `completed`, `failed` |
+| `status` | `String` | `'pending'` | Enum: `pending`, `processing`, `completed`, `failed`, `cancelled` |
+| `fileName` | `String` | `'Unknown Document'` | Original uploaded file name, shown in background job lists |
 | `progress` | `Number` | `0` | Count of questions parsed so far |
 | `totalChunks` | `Number` | `0` | Total number of document chunks to process |
+| `chunksMeta` | `Array` | `[]` | Per-chunk live tracking subdocuments (see below) |
 | `parsedQuestions` | `Array` | `[]` | Parsed question objects (populated on completion) |
-| `error` | `String` | `null` | Error message (populated on failure) |
+| `error` | `String` | `null` | Error message (populated on failure or cancellation) |
 | `createdAt` | `Date` | Auto | `timestamps: true` |
 | `updatedAt` | `Date` | Auto | `timestamps: true` |
 
-**Lifecycle:** Created when a document is uploaded. Updated during processing with `progress` counts. Finalized with `status: 'completed'` + `parsedQuestions` or `status: 'failed'` + `error`.
+**`chunksMeta[]` subdocument** — one entry per document chunk, updated live as the AI works so the frontend can render per-chunk progress:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `chunkIndex` | `Number` | — | Position of the chunk in the document |
+| `pageRange` | `String` | — | Human-readable page range this chunk covers, e.g. `"3-5"` |
+| `status` | `String` | `'pending'` | Enum: `pending`, `processing`, `completed`, `failed`, `rate_limited` |
+| `currentModel` | `String` | `null` | Gemini model currently/last used for this chunk |
+| `attempt` | `Number` | `0` | Current attempt number against `currentModel` |
+| `message` | `String` | `'Waiting to start'` | Human-readable status line shown in the UI |
+| `attemptsHistory` | `Array` | `[]` | Log of every attempt: `{ model, attemptNumber, status, message, timestamp }` |
+
+**Lifecycle:** Created when a document is uploaded, with `chunksMeta` pre-populated (`status: 'pending'`) for every chunk. Updated live during processing — both the top-level `progress` count and each chunk's `chunksMeta` entry. Finalized with `status: 'completed'` + `parsedQuestions`, `status: 'failed'` + `error`, or `status: 'cancelled'` (set by `POST /api/jobs/:jobId/cancel`) + `error: 'Cancelled by user'`.
 
 #### Config Model
 
@@ -490,8 +504,38 @@ Check the status of a background document parsing job.
 | `processing` | AI is actively parsing document chunks |
 | `completed` | All chunks processed; `parsedQuestions` populated |
 | `failed` | Processing failed; `error` field contains details |
+| `cancelled` | Job was cancelled by the user via `POST /api/jobs/:jobId/cancel` |
 
 **Errors:** `404` if job not found.
+
+---
+
+#### `GET /api/jobs/active`
+
+List all currently active (non-terminal) parsing jobs, most recent first. Used by the frontend to show a "Background Jobs" list across modal sessions/page reloads, independent of the `jobId` stored in `localStorage`.
+
+**Controller:** [documentController.getActiveJobs](file:///e:/Projects/quiz-app/backend/src/controllers/documentController.js)
+
+**Response `200`:** Array of `ParsingJob` documents with `status` in `['pending', 'processing']`, sorted by `createdAt` descending.
+
+---
+
+#### `POST /api/jobs/:jobId/cancel`
+
+Cancel an in-progress or pending parsing job.
+
+**Controller:** [documentController.cancelJob](file:///e:/Projects/quiz-app/backend/src/controllers/documentController.js)
+
+**URL Parameter:** `jobId` — MongoDB ObjectId of the ParsingJob
+
+**Behavior:** Sets `status: 'cancelled'` and `error: 'Cancelled by user'` on the job document. Before starting each chunk, the background loop re-reads the job's `status` from MongoDB and aborts processing if it is `cancelled` (or `failed`) — so cancellation takes effect between chunks, not mid-request.
+
+**Response `200`:**
+```json
+{ "message": "Job cancelled successfully", "job": { "...": "..." } }
+```
+
+**Errors:** `404` if job not found. `400` if the job is not `pending` or `processing` (already completed/failed/cancelled).
 
 ---
 
@@ -727,11 +771,13 @@ flowchart TD
     H --> J0["Create ParsingJob<br/>(status: processing)"]
     I --> J0
     J0 --> J0b["Return 202 + jobId"]
-    J0b --> J["Background: Concurrent AI<br/>Processing (3 workers)"]
+    J0b --> J["Background: Sequential AI<br/>Processing (1 chunk at a time)"]
 
     J --> K["Gemini API per chunk<br/>(structured JSON output)"]
     K --> L{API Error?}
-    L -->|429/503/404| M["Try next model<br/>(fallback chain)"]
+    L -->|429| R["Retry same model<br/>(2 attempts, 2s/4s backoff)"]
+    R -->|Exhausted| M["Global 1-min timeout for model<br/>+ try next model (fallback chain)"]
+    L -->|503/404/other| M
     L -->|Success| N["Post-validate questions"]
     M --> K
 
@@ -758,7 +804,7 @@ The controller first checks the MongoDB `Config` collection for a stored `GEMINI
 
 #### Step 4: Job Creation & Immediate Response
 
-A `ParsingJob` document is created in MongoDB with `status: 'processing'` and `totalChunks` set. The endpoint immediately returns `202 Accepted` with the `jobId`. All subsequent processing happens in a fire-and-forget async IIFE.
+A `ParsingJob` document is created in MongoDB with `status: 'processing'`, `fileName` (original upload name), `totalChunks`, and a pre-populated `chunksMeta` array (one entry per chunk, `status: 'pending'`). The endpoint immediately returns `202 Accepted` with the `jobId`. All subsequent processing happens in a fire-and-forget async IIFE.
 
 #### Step 5: AI Model Selection
 
@@ -776,15 +822,20 @@ The `getAvailableModels()` function dynamically discovers available Gemini model
 
 Results are cached for **1 hour**. On API failure, falls back to hardcoded list: `gemini-2.5-pro`, `gemini-1.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`.
 
-#### Step 6: Concurrent Processing
+#### Step 6: Sequential Chunk Processing
 
-Uses a custom `asyncBatch(items, limit=3, callback)` concurrency limiter — processes up to **3 chunks simultaneously**.
+Uses a custom `asyncBatch(items, limit=1, callback)` helper — chunks are processed **one at a time** (not concurrently). Before each chunk starts, the job's `status` is re-read from MongoDB; if it has been set to `cancelled` or `failed` (e.g. via `POST /api/jobs/:jobId/cancel`), processing stops immediately.
 
-#### Step 7: Gemini API Call
+#### Step 7: Gemini API Call, Retries & Fallback
 
 Each chunk is sent with:
 - **Structured output** (`responseMimeType: 'application/json'`) with a response schema requiring: `topic`, `subtopic`, `question_text`, `options`, `correct_answer`, `explanation`, and optional `context`.
-- **Model fallback:** On `429` (rate limit), `503` (service unavailable), or `404` (model not found) errors, automatically tries the next model in the scored list.
+- **Model fallback loop:** For each scored model in turn (skipping any model currently in a global rate-limit timeout — see below):
+  - On `429` (rate limit), retries the **same model** up to **2 times** with exponential backoff (`2s`, then `4s`) before giving up on it.
+  - On persistent `429`/`503`/`404`/quota errors after retries are exhausted, that model is placed in a **1-minute global timeout** (tracked in an in-memory `Map`, shared across all chunks/jobs in the process) and the next model in the list is tried for the same chunk.
+  - On any other error (e.g. bad JSON), the retry loop is abandoned and the next model is tried directly — no repeated retries against a model that's returning malformed output.
+- **Live progress:** Before/after each attempt, the chunk's `chunksMeta` entry is updated in MongoDB (`status`, `currentModel`, `attempt`, `message`) and an entry is appended to `attemptsHistory`, so the frontend can render a live, per-chunk view of exactly which model is being tried and why it failed or succeeded.
+- A **2-second delay** is inserted after a chunk succeeds, before moving to the next chunk, to stay under rate limits.
 
 #### Step 8: Post-Validation
 
@@ -795,9 +846,9 @@ Each extracted question is validated:
 
 #### Step 9: Job Status Updates
 
-After each chunk completes, the `ParsingJob.progress` field is updated with the running count of parsed questions. On completion, the job transitions to `status: 'completed'` with `parsedQuestions` populated. On failure, `status: 'failed'` with an `error` message.
+After each chunk completes, the `ParsingJob.progress` field is updated with the running count of parsed questions, and the chunk's `chunksMeta` entry is marked `completed` or `failed`. On completion, the job transitions to `status: 'completed'` with `parsedQuestions` populated. On failure, `status: 'failed'` with an `error` message. On user cancellation, `status: 'cancelled'`.
 
-The frontend polls `GET /api/jobs/:jobId` every 2.5 seconds to check progress and retrieve results.
+The frontend polls `GET /api/jobs/:jobId` every 2.5 seconds to check progress and retrieve results, and separately polls `GET /api/jobs/active` to show all in-flight background jobs (with cancel controls) regardless of which job the current modal session is tracking.
 
 ### 5.7. Error Handling
 
@@ -1024,12 +1075,15 @@ stateDiagram-v2
 - **Background job processing** — upload returns `202` with `jobId`, frontend polls every 2.5s
 - **Job persistence** — `jobId` stored in `localStorage`, survives modal close and page refresh
 - **"Hide Progress" button** — allows closing modal while parsing continues
+- **Background Jobs panel** — polls `GET /api/jobs/active` independently of the tracked `jobId`, listing every in-progress job (shown on the idle screen and during active parsing). Each job card is expandable to a **live per-chunk view**: status icon, page range, current model, attempt count, and a further-expandable **attempt history** (model, attempt number, status, message, timestamp) sourced from `ParsingJob.chunksMeta`. Each job has a **Stop** button that calls `POST /api/jobs/:jobId/cancel`.
+- **Job Summary** — on the Review screen, the tracked job's own live card (via `renderJobItem`) is shown at the top, reusing the same expandable chunk view.
 - Full question review interface with:
   - Per-question topic/subtopic/source dropdowns (existing values + "Create New")
   - Inline editing (source, context, question, options with add/remove, correct answer, explanation)
   - Drag-to-select for bulk operations
   - **BulkEditModal** integration for multi-field bulk editing
   - Bulk delete
+  - **Pagination** — configurable items-per-page selector over the parsed question list
 - Success animation with auto-close
 
 #### ManageTopicModal
@@ -1137,7 +1191,12 @@ interface TopicSelection {
 
 [api.ts](file:///e:/Projects/quiz-app/frontend/src/lib/api.ts) provides typed `fetch` wrappers for all API endpoints:
 
-**Base URL:** `process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'`
+**Base URL:**
+- **In the browser:** always the relative path `/api` — requests are same-origin and proxied server-side by the Next.js rewrite in [next.config.ts](file:///e:/Projects/quiz-app/frontend/next.config.ts) (`/api/:path*` → `http://localhost:5000/api/:path*`).
+- **On the server (SSR/build):** `process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'`
+
+> [!WARNING]
+> The rewrite destination is currently **hardcoded** to `http://localhost:5000`, not read from `NEXT_PUBLIC_API_URL` or any other env var. This works for local development but means a production/deployed build where the backend isn't reachable at `localhost:5000` from the frontend server will have all client-side API calls fail. If deploying, either parameterize the rewrite destination from an env var or revert the client to using `NEXT_PUBLIC_API_URL` directly.
 
 | Function | HTTP Method | Endpoint | Returns |
 |---|---|---|---|
@@ -1151,6 +1210,8 @@ interface TopicSelection {
 | `uploadQuestions(data)` | POST | `/upload-questions` | `Promise<unknown>` |
 | `uploadDocumentJob(file)` | POST | `/upload-document` | `Promise<{ jobId, message }>` |
 | `getJobStatus(jobId)` | GET | `/jobs/{jobId}` | `Promise<ParsingJob>` |
+| `getActiveJobs()` | GET | `/jobs/active` | `Promise<ParsingJob[]>` |
+| `cancelJob(jobId)` | POST | `/jobs/{jobId}/cancel` | `Promise<{ message, job }>` |
 
 ### 6.6. Design System
 
@@ -1270,6 +1331,7 @@ The primary E2E testing suite lives in the `e2e-test/` directory at the project 
 | File | Coverage |
 |---|---|
 | [quiz-flow.spec.ts](file:///e:/Projects/quiz-app/e2e-test/tests/quiz-flow.spec.ts) | Complete flow: Upload → AI Parse → Bulk Edit (topic assignment via BulkEditModal) → Inline Edit → Save → Global Manager search & verification → Quiz → Results → Return Home |
+| [background-jobs.spec.ts](file:///e:/Projects/quiz-app/e2e-test/tests/background-jobs.spec.ts) | Background Jobs UI: mocks `GET /api/jobs/active` and `POST /api/jobs/:jobId/cancel` to verify the Background Jobs panel renders a job and that clicking Stop calls the cancel endpoint and removes it from the list |
 
 **E2E Test Flow:**
 1. Navigates to homepage, verifies "QuizMaster" title
@@ -1388,6 +1450,8 @@ npm start      # Runs server.js without nodemon
 | `POST` | `/api/upload-questions` | ❌ | Bulk upsert questions |
 | `POST` | `/api/upload-document` | ❌ | AI document parsing (background job) |
 | `GET` | `/api/jobs/:jobId` | ❌ | Poll parsing job status |
+| `GET` | `/api/jobs/active` | ❌ | List all active (pending/processing) parsing jobs |
+| `POST` | `/api/jobs/:jobId/cancel` | ❌ | Cancel a pending/processing parsing job |
 | `GET` | `/api/topics` | ❌ | List topics with counts |
 | `GET` | `/api/sources` | ❌ | List distinct source values |
 | `POST` | `/api/generate-quiz` | ❌ | Generate randomized quiz |

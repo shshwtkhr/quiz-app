@@ -12,7 +12,9 @@ test.describe('Background Jobs Modal UI', () => {
           fileName: 'large_test_document.pdf',
           status: 'processing',
           progress: 5,
-          totalChunks: 20
+          totalChunks: 20,
+          createdAt: new Date().toISOString(),
+          chunksMeta: []
         }
       ];
       await route.fulfill({

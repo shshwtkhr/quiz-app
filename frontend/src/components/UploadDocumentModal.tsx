@@ -1,5 +1,5 @@
 import { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
-import { X, Upload, FileText, CheckCircle2, AlertCircle, Edit2, Plus, Trash2 } from 'lucide-react';
+import { X, Upload, FileText, CheckCircle2, AlertCircle, Edit2, Plus, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { uploadQuestions, uploadDocumentJob, getJobStatus, getActiveJobs, cancelJob } from '@/lib/api';
 import { formatMarkdownText } from '@/lib/formatText';
 import BulkEditModal, { EditableField } from './BulkEditModal';
@@ -27,6 +27,9 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const [parsedCount, setParsedCount] = useState(0);
   const [jobId, setJobId] = useState<string | null>(null);
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
+  const [expandedJobs, setExpandedJobs] = useState<Record<string, boolean>>({});
+  const [expandedChunks, setExpandedChunks] = useState<Record<string, boolean>>({});
+  const [activeJobData, setActiveJobData] = useState<any>(null);
   
   // Inline edit state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -74,6 +77,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
         try {
           const job = await getJobStatus(jobId);
           setParsedCount(job.progress);
+          setActiveJobData(job);
 
           if (job.status === 'completed') {
             clearInterval(pollInterval);
@@ -259,6 +263,7 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
     setEditingIndex(null);
     setEditFormData(null);
     setJobId(null);
+    setActiveJobData(null);
   };
 
   const handleCancelParsing = () => {
@@ -325,6 +330,108 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
   const totalPages = Math.ceil(parsedQuestions.length / itemsPerPage);
   const paginatedQuestions = parsedQuestions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  const renderJobItem = (job: any) => {
+    const isExpanded = expandedJobs[job._id];
+    const toggleExpand = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setExpandedJobs(prev => ({ ...prev, [job._id]: !prev[job._id] }));
+    };
+
+    return (
+      <div key={job._id} className="bg-surface-light/50 rounded-lg border border-glass-border overflow-hidden">
+        <div className="p-3 flex justify-between items-center cursor-pointer hover:bg-surface-light transition-colors" onClick={toggleExpand}>
+          <div className="flex-1 min-w-0 pr-3">
+            <div className="flex items-center gap-2">
+              <button className="p-1 hover:bg-surface rounded text-text-muted shrink-0">
+                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              <p className="text-text-primary text-sm font-medium truncate" title={job.fileName || 'Unknown Document'}>
+                {job.fileName || 'Unknown Document'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-1 ml-8">
+              <span className="text-xs text-text-muted">
+                {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              <span className="text-[10px] text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                {job.progress} parsed
+              </span>
+              <span className="text-[10px] text-text-secondary font-medium">
+                {job.chunksMeta?.filter((c: any) => c.status === 'completed').length || 0} / {job.totalChunks} chunks
+              </span>
+            </div>
+          </div>
+          {job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleCancelActiveJob(job._id); }}
+              className="p-1.5 text-danger/70 hover:text-danger bg-surface hover:bg-danger/10 rounded-lg transition-colors border border-danger/20 shrink-0"
+              title="Stop AI processing"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        
+        {isExpanded && job.chunksMeta && job.chunksMeta.length > 0 && (
+          <div className="border-t border-glass-border bg-surface-dark/30 p-2 max-h-48 overflow-y-auto custom-scrollbar">
+            {job.chunksMeta.map((chunk: any) => {
+              const chunkKey = `${job._id}-${chunk.chunkIndex}`;
+              const isChunkExpanded = expandedChunks[chunkKey];
+              const toggleChunkExpand = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                setExpandedChunks(prev => ({ ...prev, [chunkKey]: !prev[chunkKey] }));
+              };
+              
+              return (
+              <div key={chunk.chunkIndex} className="flex flex-col py-2 px-2 text-xs border-b border-glass-border/50 last:border-0">
+                <div className="flex items-start gap-3 cursor-pointer" onClick={toggleChunkExpand}>
+                  <button className="mt-0.5 p-0.5 hover:bg-surface rounded text-text-muted shrink-0">
+                    {isChunkExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                  <div className="mt-0.5 shrink-0">
+                    {chunk.status === 'completed' && <CheckCircle2 className="w-3.5 h-3.5 text-success" />}
+                    {chunk.status === 'failed' && <AlertCircle className="w-3.5 h-3.5 text-danger" />}
+                    {(chunk.status === 'processing' || chunk.status === 'rate_limited') && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />}
+                    {chunk.status === 'pending' && <div className="w-3.5 h-3.5 rounded-full border border-text-muted/30" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start mb-0.5 gap-2">
+                      <span className="font-medium text-text-primary truncate">
+                        Chunk {chunk.chunkIndex + 1} {chunk.pageRange ? `(Pages ${chunk.pageRange})` : ''}
+                      </span>
+                      {chunk.currentModel && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-surface border border-glass-border text-text-secondary truncate shrink-0 max-w-[120px]" title={chunk.currentModel}>
+                          {chunk.currentModel}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-text-muted flex justify-between gap-2">
+                      <span className="truncate">{chunk.message}</span>
+                      {chunk.attempt > 1 && <span className="text-warning text-[9px] shrink-0 font-medium">Attempt {chunk.attempt}</span>}
+                    </div>
+                  </div>
+                </div>
+                {isChunkExpanded && chunk.attemptsHistory && chunk.attemptsHistory.length > 0 && (
+                  <div className="mt-2 pl-9 space-y-1.5 border-l-2 border-glass-border/50 ml-[18px]">
+                    {chunk.attemptsHistory.map((attempt: any, idx: number) => (
+                      <div key={idx} className="flex flex-col text-[10px] text-text-muted bg-surface/30 p-1.5 rounded">
+                        <div className="flex justify-between items-center mb-0.5">
+                          <span className="font-medium text-primary-light">Attempt {attempt.attemptNumber}: {attempt.model}</span>
+                          <span className="text-[9px]">{new Date(attempt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                        </div>
+                        <span className={attempt.status === 'failed' || attempt.status === 'rate_limited' ? 'text-danger/80' : 'text-success/80'}>{attempt.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )})}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
       <div 
@@ -347,6 +454,13 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
 
         {status === 'review' ? (
           <div className="flex flex-col flex-1 overflow-hidden">
+            {activeJobData && (
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-2">Job Summary</h3>
+                {renderJobItem(activeJobData)}
+              </div>
+            )}
+            
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-text-primary mb-1">Review Topics</h3>
               <p className="text-text-muted text-sm flex justify-between items-center">
@@ -773,31 +887,8 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
             {activeJobs.length > 0 && (
               <div className="mt-6 border-t border-glass-border pt-4 animate-fade-in text-left">
                 <h4 className="text-text-primary font-medium mb-3 text-sm">Background Jobs</h4>
-                <div className="space-y-3 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
-                  {activeJobs.map(job => (
-                    <div key={job._id} className="bg-surface-light/50 rounded-lg p-3 flex justify-between items-center border border-glass-border">
-                      <div className="flex-1 min-w-0 pr-3">
-                        <p className="text-text-primary text-sm font-medium truncate" title={job.fileName || 'Unknown Document'}>
-                          {job.fileName || 'Unknown Document'}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-text-muted">
-                            {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <span className="text-[10px] text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
-                            {job.progress} parsed
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleCancelActiveJob(job._id); }}
-                        className="p-1.5 text-danger/70 hover:text-danger bg-surface hover:bg-danger/10 rounded-lg transition-colors border border-danger/20"
-                        title="Stop AI processing"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                <div className="space-y-3 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+                  {activeJobs.map(job => renderJobItem(job))}
                 </div>
               </div>
             )}
@@ -841,34 +932,11 @@ export default function UploadDocumentModal({ isOpen, onClose, onSuccess }: Uplo
               </div>
             )}
 
-            {status !== 'review' && status !== 'saving' && status !== 'uploading' && status !== 'success' && activeJobs.length > 0 && (
+            {status === 'parsing' && activeJobs.length > 0 && (
               <div className="mt-8 border-t border-glass-border pt-6 animate-fade-in text-left">
                 <h4 className="text-text-primary font-medium mb-3 text-sm">Other Background Jobs</h4>
-                <div className="space-y-3 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
-                  {activeJobs.map(job => (
-                    <div key={job._id} className="bg-surface-light/50 rounded-lg p-3 flex justify-between items-center border border-glass-border">
-                      <div className="flex-1 min-w-0 pr-3">
-                        <p className="text-text-primary text-sm font-medium truncate" title={job.fileName || 'Unknown Document'}>
-                          {job.fileName || 'Unknown Document'}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-text-muted">
-                            {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <span className="text-[10px] text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
-                            {job.progress} parsed
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleCancelActiveJob(job._id); }}
-                        className="p-1.5 text-danger/70 hover:text-danger bg-surface hover:bg-danger/10 rounded-lg transition-colors border border-danger/20"
-                        title="Stop AI processing"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                <div className="space-y-3 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+                  {activeJobs.map(job => renderJobItem(job))}
                 </div>
               </div>
             )}

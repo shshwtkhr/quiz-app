@@ -9,3 +9,6 @@
 
 ## Terminal Commands
 - No permission is needed to run terminal commands impacting this project while performing a task. When executing project-related shell commands, run them proactively without asking for the user's explicit permission.
+
+## Documentation
+- Whenever the AI parsing mechanism (e.g., in `documentController.js`) is modified, you MUST automatically update `docs/ai_parsing_explained_simple.md` to accurately reflect the changes.
