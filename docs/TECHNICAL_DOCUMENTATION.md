@@ -203,14 +203,21 @@ quiz-app/
 │   │   │   ├── Question.js           # Question schema & model
 │   │   │   ├── Config.js             # Key-value config model
 │   │   │   └── ParsingJob.js         # Background parsing job model
-│   │   └── routes/
-│   │       └── questionRoutes.js     # Route definitions + multer
+│   │   ├── routes/
+│   │   │   └── questionRoutes.js     # Route definitions + multer
+│   │   └── services/
+│   │       └── documentParsing.js    # Pure parsing helpers (ranking, chunking, reassembly)
 │   ├── tests/
 │   │   ├── api.test.js               # Core API route tests
 │   │   ├── upload-document.test.js   # AI upload endpoint tests
+│   │   ├── jobs.test.js              # Parsing-jobs API tests
+│   │   ├── document-parsing.test.js  # Pure unit tests (no database)
+│   │   ├── route-ordering.test.js    # Order-dependent route guards
 │   │   └── helpers/
 │   │       ├── db.js                 # In-memory MongoDB setup/teardown
-│   │       └── setup.js              # Test environment setup
+│   │       ├── setup.js              # Test environment setup
+│   │       ├── jobs.js               # waitForJob / deferred
+│   │       └── genai-mock.js         # Shared @google/genai mock
 │   ├── server.js                     # Entry point
 │   ├── seed_config.js                # API key seeding script
 │   ├── cleanup-e2e.js                # E2E test data cleanup
@@ -774,7 +781,7 @@ flowchart TD
 
     C --> G{Text extracted?}
     G -->|No — Image PDF| H["pdf-lib: Split into<br/>5-page sub-documents"]
-    G -->|Yes| I["Split text into<br/>15K char chunks"]
+    G -->|Yes| I["Line-index the text<br/>250-line chunks, 50-line overlap"]
     
     H --> J0["Create ParsingJob<br/>(status: processing)"]
     I --> J0
@@ -808,7 +815,9 @@ The controller first checks the MongoDB `Config` collection for a stored `GEMINI
 #### Step 3: Document Chunking
 
 - **Image PDFs:** Uses `pdf-lib` to split into sub-documents of **max 5 pages each**. Each sub-document is sent as base64-encoded binary (`inlineData`) to Gemini.
-- **Text documents:** Splits by paragraph boundaries (double newlines), accumulates into chunks of **max 15,000 characters**.
+- **Text documents:** Every non-blank line is assigned an index and recorded in a server-side dictionary along with the page it came from (derived from the `___PAGE_START_n___` markers, which are consumed here rather than indexed). The line-numbered text is then split into windows of **max 250 lines with a 50-line overlap** — the overlap ensures a question straddling a boundary is seen whole by at least one chunk, and the resulting duplicates are removed later by `question_text` dedup.
+
+The chunker, the line dictionary and the page-range derivation live in [services/documentParsing.js](file:///e:/Projects/quiz-app/backend/src/services/documentParsing.js) as pure functions, and are unit-tested directly.
 
 #### Step 4: Job Creation & Immediate Response
 
@@ -828,7 +837,11 @@ The `getAvailableModels()` function dynamically discovers available Gemini model
 | `lite` / `8b` | -10 (deprioritized) |
 | Stable (no `preview`/`exp`) | +10 bonus |
 
+Non-text models (`embedding`, `imagen`, `veo`, `tts`, `audio`, `aqa`, `research`, `antigravity`, `robotics`, `computer-use`) are dropped before scoring, as is anything that is not a `gemini` or `gemma` model. Anything scoring at or below **-50** is discarded; the survivors are ordered best-first, and that order doubles as the fallback chain.
+
 Results are cached for **1 hour**. On API failure, falls back to hardcoded list: `gemini-2.5-pro`, `gemini-1.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`.
+
+The scoring and filtering are pure functions (`getScore`, `isSupportedModel`, `rankModels`) in [services/documentParsing.js](file:///e:/Projects/quiz-app/backend/src/services/documentParsing.js); `getAvailableModels()` in the controller only handles the API call and the cache.
 
 #### Step 6: Sequential Chunk Processing
 
@@ -1276,6 +1289,7 @@ Create a `.env` file in the `backend/` directory (see [.env.example](file:///e:/
 | `CORS_ORIGIN` | ❌ | `'*'` | Allowed CORS origin(s) |
 | `GEMINI_API_KEY` | ✅* | — | Google Gemini API key |
 | `NODE_ENV` | ❌ | — | Set to `development` for verbose error messages |
+| `PARSING_CHUNK_DELAY_MS` | ❌ | `2000` | Pause between chunks, to stay clear of API rate limits. The test harness sets it to `0`; lower it in production only if you know your quota headroom. |
 
 > \* The `GEMINI_API_KEY` can alternatively be stored in the MongoDB `Config` collection via `seed_config.js`. The env var serves as a fallback.
 
@@ -1301,9 +1315,29 @@ Create a `.env.local` file in the `frontend/` directory (see [.env.example](file
 | File | Coverage |
 |---|---|
 | [api.test.js](file:///e:/Projects/quiz-app/backend/tests/api.test.js) | Core CRUD routes: upload, topics, quiz generation, validation, deduplication |
-| [upload-document.test.js](file:///e:/Projects/quiz-app/backend/tests/upload-document.test.js) | AI upload endpoint: missing API keys, mock Gemini responses, file format handling, unsupported file rejection |
+| [upload-document.test.js](file:///e:/Projects/quiz-app/backend/tests/upload-document.test.js) | The async upload contract end to end: `202` + `jobId`, indexed-schema reassembly for TXT/PDF/DOCX, page provenance, post-validation rejects, markdown-fenced JSON, the image-PDF flat-schema path, model fallback, and cancellation mid-parse |
+| [jobs.test.js](file:///e:/Projects/quiz-app/backend/tests/jobs.test.js) | `GET /jobs/active` filtering and ordering, `GET /jobs/:jobId`, `POST /jobs/:jobId/cancel` (200/400/404 and idempotency), plus the F-01 guard: a cancelled job cannot be overwritten |
+| [document-parsing.test.js](file:///e:/Projects/quiz-app/backend/tests/document-parsing.test.js) | Pure unit tests for [services/documentParsing.js](file:///e:/Projects/quiz-app/backend/src/services/documentParsing.js) — model ranking, line dictionary, chunk overlap and page-range derivation, line-index reassembly, dedup. No database. |
+| [route-ordering.test.js](file:///e:/Projects/quiz-app/backend/tests/route-ordering.test.js) | Guards the order-dependent routes: `/questions/bulk` before `/questions/:id`, `/jobs/active` before `/jobs/:jobId` |
 
 **Test Database:** Uses `mongodb-memory-server` for isolated, in-memory MongoDB instances. Setup/teardown in [tests/helpers/db.js](file:///e:/Projects/quiz-app/backend/tests/helpers/db.js).
+
+**Test helpers:**
+
+| Helper | Purpose |
+|---|---|
+| [helpers/db.js](file:///e:/Projects/quiz-app/backend/tests/helpers/db.js) | In-memory MongoDB lifecycle |
+| [helpers/setup.js](file:///e:/Projects/quiz-app/backend/tests/helpers/setup.js) | Global hooks; also sets `PARSING_CHUNK_DELAY_MS=0` and drains background workers before clearing the database |
+| [helpers/jobs.js](file:///e:/Projects/quiz-app/backend/tests/helpers/jobs.js) | `waitForJob()` — polls a `ParsingJob` to a terminal state; `deferred()` — gates a mocked AI call so a test can cancel mid-flight |
+| [helpers/genai-mock.js](file:///e:/Projects/quiz-app/backend/tests/helpers/genai-mock.js) | Shared `@google/genai` manual mock, programmable via `__mocks` |
+
+> [!IMPORTANT]
+> `POST /api/upload-document` answers `202` and continues working in a
+> fire-and-forget async IIFE. A test that returns as soon as it has the `jobId`
+> leaves that worker writing to a database the harness is tearing down — which
+> is what previously surfaced as an unrelated suite "failing to run". Always
+> `await waitForJob(jobId)`. The controller also exports `drainBackgroundJobs()`
+> and `resetModelCache()` as test seams.
 
 **Running:**
 ```bash
@@ -1403,6 +1437,21 @@ Removes all questions with topic `E2E-TEST-TOPIC-XYZ123` — a sentinel topic na
 | `seed_config.js` | `backend/` | Seeds `GEMINI_API_KEY` from `.env` into MongoDB `Config` collection |
 | `test-gemini.js` | `backend/` | Standalone Gemini API connectivity test |
 | `test_pdf_bold.js` | `backend/` | Tests PDF bold text extraction |
+
+### 8.7. Continuous Integration
+
+[.github/workflows/ci.yml](file:///e:/Projects/quiz-app/.github/workflows/ci.yml) runs on every pull request to `main` and on pushes to `main`. Two independent jobs:
+
+| Job | Steps |
+|---|---|
+| **Backend tests** | `npm ci` → `npm test`. Caches the `mongodb-memory-server` binary under `~/.cache/mongodb-binaries`. |
+| **Frontend tests and build** | `npm ci` → `npx tsc --noEmit` → `npm test` → `npm run build` |
+
+In-flight runs are cancelled when a PR is updated (`concurrency` with `cancel-in-progress`).
+
+**Playwright E2E is deliberately not in CI.** It needs a real MongoDB plus both servers running, and `quiz-flow.spec.ts` calls the live Gemini API. Run it locally per §8.3.
+
+Linting is not wired either: `frontend`'s `lint` script is `next lint`, which has no ESLint config in this repo and prompts interactively on first run.
 
 ---
 

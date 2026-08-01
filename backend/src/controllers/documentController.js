@@ -4,11 +4,35 @@ const { PDFDocument } = require('pdf-lib');
 const { GoogleGenAI } = require('@google/genai');
 const Config = require('../models/Config');
 const ParsingJob = require('../models/ParsingJob');
+const {
+  FALLBACK_MODELS,
+  rankModels,
+  buildLineDictionary,
+  stripPageMarkers,
+  chunkIndexedLines,
+  reassembleQuestion,
+  isValidFlatQuestion,
+  dedupeByQuestionText,
+} = require('../services/documentParsing');
 
 let cachedModels = null;
 let lastModelFetch = 0;
 // Global tracker for rate-limited models: modelName -> timeout expiry timestamp
 const globalRateLimits = new Map();
+
+// Courtesy pause between chunks so we don't walk straight into a rate limit.
+// Configurable so tests can run the pipeline without the wall-clock cost.
+const CHUNK_DELAY_MS = Number(process.env.PARSING_CHUNK_DELAY_MS ?? 2000);
+
+// In-flight background workers. uploadDocument answers 202 and keeps working,
+// so without a handle on those promises there is no way to know when the work
+// has actually stopped — which tests need before tearing the database down.
+const backgroundJobs = new Set();
+
+/** Wait for every in-flight background parsing worker to settle. */
+function drainBackgroundJobs() {
+  return Promise.allSettled([...backgroundJobs]);
+}
 
 /**
  * Thrown when the background worker notices the job has already reached a
@@ -31,47 +55,15 @@ async function getAvailableModels(ai) {
   
   try {
     const response = await ai.models.list();
-    const models = [];
+    const names = [];
     for await (const m of response) {
       if (!m.name) continue;
-      const name = m.name.replace('models/', '');
-      
-      if (
-        name.includes('embedding') || 
-        name.includes('imagen') || 
-        name.includes('veo') || 
-        name.includes('tts') ||
-        name.includes('audio') ||
-        name.includes('aqa') ||
-        name.includes('research') ||
-        name.includes('antigravity') ||
-        name.includes('robotics') ||
-        name.includes('computer-use')
-      ) {
-        continue;
-      }
-      
-      if (name.includes('gemini') || name.includes('gemma')) {
-        models.push(name);
-      }
+      names.push(m.name.replace('models/', ''));
     }
-    
-    const getScore = (name) => {
-      let score = 0;
-      if (name.includes('3.1') || name.includes('3.0') || name.includes('3-pro')) return -100;
-      if (name.includes('2.5-flash')) score += 100;
-      else if (name.includes('2.0-flash')) score += 80;
-      else if (name.includes('1.5-flash')) score += 50;
-      else if (name.includes('pro')) score += 20;
-      
-      if (!name.includes('preview') && !name.includes('exp')) score += 10;
-      if (name.includes('lite') || name.includes('8b')) score -= 10;
-      return score;
-    };
-    
-    models.sort((a, b) => getScore(b) - getScore(a));
-    const filteredModels = models.filter(m => getScore(m) > -50);
-    
+
+    // Ranked best-first; the order doubles as the fallback order.
+    const filteredModels = rankModels(names);
+
     if (filteredModels.length > 0) {
       cachedModels = filteredModels; // Use all available models for fallback
       lastModelFetch = Date.now();
@@ -80,8 +72,15 @@ async function getAvailableModels(ai) {
   } catch (err) {
     console.error("Failed to list models, using hardcoded fallback", err);
   }
-  
-  return ['gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
+  return FALLBACK_MODELS;
+}
+
+/** Test seam: drop the 1-hour model cache so suites don't leak state. */
+function resetModelCache() {
+  cachedModels = null;
+  lastModelFetch = 0;
+  globalRateLimits.clear();
 }
 
 exports.uploadDocument = async (req, res, next) => {
@@ -143,7 +142,7 @@ exports.uploadDocument = async (req, res, next) => {
     }
 
     const isPdf = mimetype === 'application/pdf' || originalname.endsWith('.pdf');
-    const textWithoutMarkers = extractedText.replace(/___PAGE_START_\d+___/g, '').trim();
+    const textWithoutMarkers = stripPageMarkers(extractedText);
     const isImagePdf = isPdf && textWithoutMarkers.length === 0;
     
     if (textWithoutMarkers.length === 0 && !isImagePdf) {
@@ -174,46 +173,9 @@ exports.uploadDocument = async (req, res, next) => {
          });
       }
     } else {
-      dictionary = {};
-      let currentLineIndex = 1;
-      let currentPage = '1';
-      const textLinesWithIndex = [];
-      
-      const lines = extractedText.split('\n');
-      for (const line of lines) {
-        // Extract page marker if present
-        const pageMatch = line.match(/___PAGE_START_(\d+)___/);
-        if (pageMatch) {
-          currentPage = pageMatch[1];
-          continue;
-        }
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        
-        dictionary[currentLineIndex] = { text: trimmed, page: currentPage };
-        textLinesWithIndex.push(`[${currentLineIndex}] ${trimmed}`);
-        currentLineIndex++;
-      }
-      
-      const maxChunkSize = 250;
-      const overlapSize = 50;
-      
-      for (let i = 0; i < textLinesWithIndex.length; i += (maxChunkSize - overlapSize)) {
-        const chunkLines = textLinesWithIndex.slice(i, i + maxChunkSize);
-        if (chunkLines.length > 0) {
-          let pageRange = null;
-          const firstMatch = chunkLines[0].match(/^\[(\d+)\]/);
-          const lastMatch = chunkLines[chunkLines.length - 1].match(/^\[(\d+)\]/);
-          if (firstMatch && lastMatch) {
-             const firstPage = dictionary[firstMatch[1]]?.page;
-             const lastPage = dictionary[lastMatch[1]]?.page;
-             if (firstPage && lastPage) {
-                pageRange = firstPage === lastPage ? String(firstPage) : `${firstPage}-${lastPage}`;
-             }
-          }
-          chunks.push({ text: chunkLines.join('\n'), isTextIndex: true, pageRange });
-        }
-      }
+      const indexed = buildLineDictionary(extractedText);
+      dictionary = indexed.dictionary;
+      chunks.push(...chunkIndexedLines(indexed.textLinesWithIndex, dictionary));
     }
 
     const chunksMeta = chunks.map((c, idx) => ({
@@ -241,7 +203,7 @@ exports.uploadDocument = async (req, res, next) => {
     });
 
     // 4. Start Background Process
-    (async () => {
+    const backgroundTask = (async () => {
       let totalParsed = 0;
       let resultsByChunk = new Array(chunks.length);
 
@@ -413,44 +375,12 @@ Text:
                   let validQuestions = [];
                   
                   if (chunk.inlineData) {
-                    validQuestions = questions.filter(q => {
-                       const hasOptions = Array.isArray(q.options) && q.options.length >= 2;
-                       const hasCorrect = hasOptions && q.options.some(opt => opt.trim() === (q.correct_answer || '').trim());
-                       return q.topic && q.subtopic && q.question_text && hasOptions && hasCorrect && q.explanation;
-                    });
+                    validQuestions = questions.filter(isValidFlatQuestion);
                   } else {
                     for (const q of questions) {
                       try {
-                         if (!q.question_lines || q.question_lines.length === 0) continue;
-                         if (!q.options || q.options.length < 2) continue;
-                         
-                         const getText = (indexes) => {
-                           if (!indexes) return '';
-                           return indexes.map(idx => dictionary[idx]?.text || '').filter(Boolean).join('\n');
-                         };
-                         
-                         const allIdxs = [...(q.context_lines || []), ...q.question_lines];
-                         q.options.forEach(o => allIdxs.push(...(o.lines || [])));
-                         allIdxs.push(...(q.explanation_lines || []));
-                         
-                         const pages = [...new Set(allIdxs.map(idx => dictionary[idx]?.page).filter(Boolean))];
-                         let pageRange = null;
-                         if (pages.length === 1) pageRange = pages[0];
-                         else if (pages.length > 1) pageRange = `${pages[0]}-${pages[pages.length-1]}`;
-                         
-                         const correctOpt = q.options.find(o => o.is_correct);
-                         if (!correctOpt) continue;
-    
-                         validQuestions.push({
-                           topic: q.topic || 'General',
-                           subtopic: q.subtopic || 'General',
-                           context: getText(q.context_lines),
-                           question_text: getText(q.question_lines),
-                           options: q.options.map(o => getText(o.lines)),
-                           correct_answer: getText(correctOpt.lines),
-                           explanation: getText(q.explanation_lines),
-                           pageRange: pageRange
-                         });
+                         const reassembled = reassembleQuestion(q, dictionary);
+                         if (reassembled) validQuestions.push(reassembled);
                       } catch (e) {
                          console.error("Error mapping indexed question:", e);
                       }
@@ -533,7 +463,7 @@ Text:
             
             if (chunkSuccess) {
               // Add a small delay between chunks to respect rate limits
-              await new Promise(r => setTimeout(r, 2000));
+              if (CHUNK_DELAY_MS > 0) await new Promise(r => setTimeout(r, CHUNK_DELAY_MS));
               break; // break model loop
             }
           } // end for models
@@ -547,16 +477,8 @@ Text:
           }
         });
 
-        let allQuestions = resultsByChunk.flat().filter(Boolean);
-        
-        // Deduplicate overlapping questions by question_text
-        const uniqueMap = new Map();
-        for (const q of allQuestions) {
-           if (!uniqueMap.has(q.question_text)) {
-              uniqueMap.set(q.question_text, q);
-           }
-        }
-        allQuestions = Array.from(uniqueMap.values());
+        // Deduplicate questions the chunk overlap saw twice
+        const allQuestions = dedupeByQuestionText(resultsByChunk.flat().filter(Boolean));
 
         if (allQuestions.length === 0) {
           await finishJob({ status: 'failed', error: 'Failed to extract any valid questions from the document.' });
@@ -584,6 +506,9 @@ Text:
         await finishJob({ status: 'failed', error: errorMessage });
       }
     })();
+
+    backgroundJobs.add(backgroundTask);
+    backgroundTask.finally(() => backgroundJobs.delete(backgroundTask));
 
   } catch (error) {
     next(error);
@@ -642,3 +567,10 @@ exports.cancelJob = async (req, res, next) => {
     next(error);
   }
 };
+
+// Exported for tests: the model list and rate-limit map are module-level caches
+// that would otherwise leak between suites, and background workers outlive the
+// request that started them.
+exports.resetModelCache = resetModelCache;
+exports.drainBackgroundJobs = drainBackgroundJobs;
+exports.JobCancelledError = JobCancelledError;
