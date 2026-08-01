@@ -1,6 +1,9 @@
-require('dotenv').config();
+// Seeds GEMINI_API_KEY from backend/.env into the MongoDB Config collection,
+// which documentController prefers over the environment variable.
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const mongoose = require('mongoose');
-const Config = require('./src/models/Config');
+const Config = require('../src/models/Config');
 
 mongoose.connect(process.env.MONGODB_URI).then(async () => {
   if (process.env.GEMINI_API_KEY) {

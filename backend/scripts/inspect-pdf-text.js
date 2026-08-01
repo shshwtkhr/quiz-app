@@ -1,3 +1,8 @@
+// Dumps what pdf-parse extracts from a PDF, with the same bold/italic
+// inference the upload pipeline applies. Use it to see why a PDF parsed badly,
+// or to confirm a PDF is image-only (output will be empty).
+//
+//   node scripts/inspect-pdf-text.js <path-to.pdf>
 const fs = require('fs');
 const pdf = require('pdf-parse');
 
@@ -38,7 +43,17 @@ function render_page(pageData) {
         });
 }
 
-let dataBuffer = fs.readFileSync('e:\\Projects\\quiz-app\\e2e-test\\sample.pdf');
+const target = process.argv[2];
+if (!target) {
+    console.error('Usage: node scripts/inspect-pdf-text.js <path-to.pdf>');
+    process.exit(1);
+}
+if (!fs.existsSync(target)) {
+    console.error(`No such file: ${target}`);
+    process.exit(1);
+}
+
+const dataBuffer = fs.readFileSync(target);
 
 pdf(dataBuffer, { pagerender: render_page }).then(function(data) {
     console.log(data.text);

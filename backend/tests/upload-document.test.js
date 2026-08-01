@@ -155,6 +155,15 @@ describe('POST /api/upload-document', () => {
   });
 
   it('creates the job in a processing state with per-chunk metadata', async () => {
+    // Hold the AI call open. Without this the job can reach 'completed' before
+    // the assertion below reads it — the mock is instant and the inter-chunk
+    // delay is 0 under test, so the whole pipeline can finish inside the await.
+    const gate = deferred();
+    __mocks.generateContent.mockImplementationOnce(async (req) => {
+      await gate.promise;
+      return respondPerChunkType(req);
+    });
+
     const res = await uploadTxt();
     const job = await ParsingJob.findById(res.body.jobId);
 
@@ -162,8 +171,9 @@ describe('POST /api/upload-document', () => {
     expect(job.totalChunks).toBe(1);
     expect(job.chunksMeta).toHaveLength(1);
     expect(job.chunksMeta[0].chunkIndex).toBe(0);
-    expect(['pending', 'processing']).toContain(job.status);
+    expect(job.status).toBe('processing');
 
+    gate.resolve();
     await waitForJob(res.body.jobId);
   });
 

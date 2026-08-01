@@ -1,0 +1,30 @@
+# Normalise line endings.
+#
+# Without this, every contributor's local core.autocrlf decides how files are
+# stored and checked out, which is why this Windows checkout emitted
+# "LF will be replaced by CRLF" on every single edit. Declaring it here makes
+# the answer a property of the repository rather than of each machine:
+# everything is stored and checked out as LF.
+* text=auto eol=lf
+
+# Windows batch files genuinely need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets: never normalise, never try to diff.
+# (`binary` is the built-in macro for `-text -diff`.)
+*.webm binary
+*.mp4  binary
+*.mov  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.docx binary
+*.woff binary
+*.woff2 binary
+
+# Generated — keep them out of diffs and out of language statistics.
+package-lock.json -diff linguist-generated

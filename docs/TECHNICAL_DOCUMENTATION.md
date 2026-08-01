@@ -218,9 +218,14 @@ quiz-app/
 │   │       ├── setup.js              # Test environment setup
 │   │       ├── jobs.js               # waitForJob / deferred
 │   │       └── genai-mock.js         # Shared @google/genai mock
+│   ├── scripts/
+│   │   ├── README.md                 # What each script is for
+│   │   ├── seed-config.js            # API key seeding
+│   │   ├── check-gemini.js           # Gemini connectivity check
+│   │   ├── list-models.js            # Model ranking preview
+│   │   ├── inspect-pdf-text.js       # PDF text extraction dump
+│   │   └── drop-db.js                # Drops the local database
 │   ├── server.js                     # Entry point
-│   ├── seed_config.js                # API key seeding script
-│   ├── cleanup-e2e.js                # E2E test data cleanup
 │   ├── jest.config.js                # Jest configuration
 │   ├── package.json
 │   ├── .env.example
@@ -1291,7 +1296,7 @@ Create a `.env` file in the `backend/` directory (see [.env.example](file:///e:/
 | `NODE_ENV` | ❌ | — | Set to `development` for verbose error messages |
 | `PARSING_CHUNK_DELAY_MS` | ❌ | `2000` | Pause between chunks, to stay clear of API rate limits. The test harness sets it to `0`; lower it in production only if you know your quota headroom. |
 
-> \* The `GEMINI_API_KEY` can alternatively be stored in the MongoDB `Config` collection via `seed_config.js`. The env var serves as a fallback.
+> \* The `GEMINI_API_KEY` can alternatively be stored in the MongoDB `Config` collection via `scripts/seed-config.js`. The env var serves as a fallback.
 
 ### Frontend Environment Variables
 
@@ -1432,11 +1437,21 @@ Removes all questions with topic `E2E-TEST-TOPIC-XYZ123` — a sentinel topic na
 
 ### 8.6. Utility Scripts
 
-| Script | Location | Purpose |
+All developer scripts live in `backend/scripts/` and are catalogued in [backend/scripts/README.md](file:///e:/Projects/quiz-app/backend/scripts/README.md). Run them from the `backend/` directory. None of them run as part of the app, the test suite, or CI.
+
+| Script | Command | Purpose |
 |---|---|---|
-| `seed_config.js` | `backend/` | Seeds `GEMINI_API_KEY` from `.env` into MongoDB `Config` collection |
-| `test-gemini.js` | `backend/` | Standalone Gemini API connectivity test |
-| `test_pdf_bold.js` | `backend/` | Tests PDF bold text extraction |
+| `seed-config.js` | `node scripts/seed-config.js` | Copies `GEMINI_API_KEY` from `backend/.env` into the MongoDB `Config` collection, which `documentController` reads in preference to the env var |
+| `check-gemini.js` | `node scripts/check-gemini.js` | Lists visible models and makes one `generateContent` call — separates an API-key problem from a pipeline problem |
+| `list-models.js` | `node scripts/list-models.js` | Prints every visible model scored and ranked exactly as the pipeline ranks them (the output *is* the fallback order), plus anything rejected by the `-50` cutoff. Imports the scoring from `src/services/documentParsing.js` rather than duplicating it. |
+| `inspect-pdf-text.js` | `node scripts/inspect-pdf-text.js <file.pdf>` | Dumps `pdf-parse` output with the pipeline's bold/italic inference. Empty output ⇒ image-only PDF. |
+| `drop-db.js` | `node scripts/drop-db.js` | **Destructive.** Drops the entire local `quiz-app` database. Its URI is hardcoded to localhost on purpose — reading `MONGODB_URI` would let a production `.env` point it at production. |
+
+> [!NOTE]
+> These were previously scattered across the repository root and `backend/`
+> under names like `test-gemini.js` and `test_pdf_bold.js`, which read as test
+> files despite never being collected by Jest. They were renamed for what they
+> do when they moved.
 
 ### 8.7. Continuous Integration
 

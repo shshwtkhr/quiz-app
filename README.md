@@ -5,7 +5,9 @@ A modern, full-stack Quiz Application powered by AI that can automatically gener
 ## 🎥 Full Application Flow
 Below is a real-time recording of the complete application flow, validated by our automated End-to-End (E2E) testing framework:
 
-<video src="https://github.com/shshwtkhr/quiz-app/raw/main/e2e-test/test-results/demo/e2e-success.webm" width="100%" controls autoplay loop></video>
+<video src="https://github.com/shshwtkhr/quiz-app/raw/main/e2e-test/quiz_app_demo.mp4" width="100%" controls autoplay loop></video>
+
+*(If the video does not play inline, [download it here](e2e-test/quiz_app_demo.mp4).)*
 
 ## ✨ Features
 
@@ -93,11 +95,9 @@ The project includes an End-to-End testing suite built with Playwright which cov
 
 ### Full App Flow Testing Video
 
-Watch the complete automated E2E test running through the entire application flow:
-
-<video src="./assets/e2e-success.webm" controls="controls" muted="muted" width="100%"></video>
-
-*(If the video above doesn't play automatically on GitHub, you can [download/view it here](./assets/e2e-success.webm))*
+A recording of the automated E2E test running through the entire application
+flow is at the [top of this README](#-full-application-flow); the file itself is
+[e2e-test/quiz_app_demo.mp4](e2e-test/quiz_app_demo.mp4).
 
 To run the tests locally:
 
