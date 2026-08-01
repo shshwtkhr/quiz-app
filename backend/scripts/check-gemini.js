@@ -1,4 +1,8 @@
-require('dotenv').config();
+// Standalone connectivity check: lists the models the key can see, then makes
+// one generateContent call. Use it to tell an API-key problem apart from a
+// parsing-pipeline problem.
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { GoogleGenAI } = require('@google/genai');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
