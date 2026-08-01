@@ -2,7 +2,7 @@
 
 > **Version:** 1.3.0  
 > **License:** MIT — Copyright © 2026 Shashwat Khare  
-> **Last Updated:** August 2026
+> **Last Updated:** 1 August 2026
 
 Every state and decision in the app, as three lanes: ingest a document, play a quiz, manage the bank. The rendered wireframe — screen sketches, decision diamonds and server calls — is at [`assets/quizmaster-application-flow.html`](assets/quizmaster-application-flow.html) (self-contained, pannable).
 
@@ -50,14 +50,15 @@ flowchart LR
     Parsing -->|Completed| Review["Screen: Review topics"]
     Review -->|Save| Upsert["POST /api/upload-questions<br>upsert on unique index<br>topic + subtopic + question_text"]
     Upsert --> Home
-    Parsing -->|Cancel| Aborted["Job aborted before next chunk"]
+    Parsing -->|Cancel| Aborted["POST /api/jobs/:id/cancel<br>worker throws JobCancelledError;<br>status stays 'cancelled'"]
 ```
 
 **Notes**
 
 - The POST returns **202 with a job id** immediately; the worker is detached, so closing the tab does not kill the parse.
 - `localStorage.activeUploadJobId` present on mount → the modal auto-opens straight into **Parsing**.
-- The worker re-reads job status before every chunk, which is what makes cancellation instant.
+- The worker re-reads job status before every chunk, which is what makes cancellation instant. The cancel path throws a `JobCancelledError` sentinel and the terminal write is guarded on `status: 'processing'`, so a deliberate cancel is never rewritten as a failure.
+- Browser traffic is same-origin: `lib/api.ts` calls `/api/*`, which the Next.js server rewrites to `BACKEND_ORIGIN`.
 - Upsert against the unique compound index means re-uploading the same document cannot duplicate questions.
 
 ---
@@ -105,7 +106,7 @@ flowchart LR
     D2 -->|Bulk Edit| Field["Pick one field, type a value,<br>apply to the whole selection"]
     D2 -->|Delete| Confirm["confirm() — native dialog"]
     Inline --> Save["PUT /api/questions/:id"]
-    Field --> Save2["POST /api/questions/bulk-update"]
+    Field --> Save2["PUT /api/questions/bulk"]
     Confirm --> Del["DELETE /api/questions"]
 ```
 

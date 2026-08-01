@@ -2,7 +2,12 @@
 
 > **Version:** 1.3.0  
 > **License:** MIT — Copyright © 2026 Shashwat Khare  
-> **Last Updated:** August 2026
+> **Last Updated:** 1 August 2026 — revised after Phases 0–3 of [ARCHITECTURE_AND_ROADMAP.md](ARCHITECTURE_AND_ROADMAP.md) landed
+
+> [!NOTE]
+> Sections 8–10 describe repository *status*, which moves faster than this deck.
+> [ARCHITECTURE_AND_ROADMAP.md](ARCHITECTURE_AND_ROADMAP.md) is the source of
+> truth for branch state and findings; where the two disagree, believe it.
 
 Internal engineering review deck — product walkthrough, the AI parsing pipeline, token spend, stack, testing, branch divergence and roadmap. The rendered deck is at [`assets/quizmaster-product-review.html`](assets/quizmaster-product-review.html) (self-contained, opens in any browser; press `P` / use the browser print dialog to export as PDF).
 
@@ -45,11 +50,14 @@ Monorepo, two services, one detached worker. The frontend never talks to Gemini 
 | Layer | What it is | Notes |
 |---|---|---|
 | **Client** | Next.js 15 · React 19 | Routes `/`, `/quiz`, `/results`, `/manage`. Quiz state in a Zustand store; nothing persisted server-side. |
-| **API** | Express, 12 routes | Questions CRUD, search, bulk update, quiz generation, document upload, job status/cancel. |
+| **API** | Express, 13 routes | Questions CRUD, search, bulk update, quiz generation, document upload, job status/cancel. |
+| **Services** | `services/documentParsing.js` | Pure, side-effect-free pipeline helpers — line dictionary, chunker, model ranking, reassembly, dedupe. Extracted so the highest-churn logic is directly unit-testable. |
 | **Data** | MongoDB · Mongoose | Models: `Question`, `ParsingJob`, `Config`. Unique index on topic + subtopic + question text makes re-upload idempotent. |
 | **AI** | Gemini, model ladder | Models discovered at runtime and ranked, not hardcoded. API key read from the DB `Config` collection, env as fallback. |
 
 Upload returns **202 with a job id** in milliseconds. Everything expensive happens after the response — the browser polls, and closing the tab does not kill the parse.
+
+The browser never calls the backend cross-origin: `lib/api.ts` targets the same-origin `/api/*` path, which the Next.js server rewrites to `BACKEND_ORIGIN` (env-driven, defaults to `http://localhost:5000`).
 
 ---
 
@@ -69,7 +77,7 @@ One screen does topic selection, per-topic question count and the time limit. St
 
 - **Nothing blocks** — the POST returns a job id in milliseconds; the worker runs detached.
 - **Per-chunk telemetry** — status, page range, current model and full attempt history stored on the job document.
-- **Cancellable mid-flight** — the worker re-reads job status before every chunk and aborts.
+- **Cancellable mid-flight** — the worker re-reads job status before every chunk and throws a `JobCancelledError` sentinel; the terminal write is guarded on `status: 'processing'`, so a cancelled job can never be demoted to `failed`.
 - **Survives a reload** — the job id in `localStorage` reopens the modal where it left off.
 
 ### 3.3 Review (`status === 'review'` · `BulkEditModal.tsx`)
@@ -108,7 +116,7 @@ Document in, tagged questions out — six stages.
 | 3 | **Chunk** | Lines numbered into a dictionary, then 250-line windows with 50 lines of overlap so a question is never cut in half. |
 | 4 | **Ladder** | Models listed at runtime and scored. Rate-limited models go into a global cool-down map and are skipped, not retried. |
 | 5 | **Validate** | Response schema enforced; a regex rescues fenced JSON. Questions without ≥2 options or a matching answer are dropped. |
-| 6 | **Review** | Progress written per chunk to the job document. On completion the UI opens the review table — the human tags and saves. |
+| 6 | **Review** | Duplicates from the chunk overlap are dropped by question text; progress is written per chunk to the job document. On completion the UI opens the review table — the human tags and saves. |
 
 Failure is expected, not exceptional: chunk state, model, attempt count and a full attempt history are persisted so a bad parse can be read after the fact.
 
@@ -163,7 +171,7 @@ Boring on purpose.
 | **Framework** | Next.js 15, React 19 | App router; three quiz routes plus `/manage`. No SSR data fetching — everything client-side against the API. |
 | **Styling** | Tailwind CSS 4 | Design tokens declared as an `@theme` block in OKLCH; glass cards and gradients as hand-written utilities. |
 | **State** | Zustand, provider-scoped | Quiz session lives entirely in memory — questions, answer key, selections, timer. A refresh mid-quiz loses it. |
-| **API** | Express, 12 routes | One router, two controllers, a 10 MB JSON limit and multer memory storage for uploads. |
+| **API** | Express, 13 routes | One router, two controllers, a 10 MB JSON limit and multer memory storage for uploads. |
 | **Data** | MongoDB · Mongoose | `Question`, `ParsingJob`, `Config`. Unique compound index gives upsert-on-re-upload for free. |
 | **AI** | `@google/genai` · Gemini | Runtime model discovery, scored ladder, hourly cache, global rate-limit map. Key read from the DB with env fallback. |
 | **Docs** | `pdf-parse` · `pdf-lib` · `mammoth` | Text extraction, scan splitting and DOCX respectively — chosen after pinning `pdf-parse` back to 1.1.1. |
@@ -172,7 +180,7 @@ Boring on purpose.
 
 ## 7. Testing
 
-One deep E2E path, thin everywhere else.
+The quality gate went green in Phase 2. The backend suite was **17 passed / 3 failed**; it is now **116 passed / 0 failed** across five files, and CI runs on every PR.
 
 ### 7.1 Playwright — the full journey
 
@@ -184,23 +192,29 @@ One deep E2E path, thin everywhere else.
 6. Play the quiz and assert the results page
 7. Background Jobs modal: display and cancel (TECHDL-11)
 
-The run is recorded to video with an injected cursor and shipped in the README. A cleanup script removes the `E2E-TEST-TOPIC-*` records it creates.
+The run is recorded to video with an injected cursor. A cleanup script (`cd e2e-test && npm run cleanup`) removes the `E2E-TEST-TOPIC-*` records it creates.
 
-### 7.2 Unit
+### 7.2 Unit — backend, 5 suites
 
-- **Backend:** 2 Jest suites — API routes and document upload.
-- **Frontend:** 1 suite — QuizEngine.
+| Suite | What it locks down |
+|---|---|
+| `document-parsing.test.js` | Model scoring and ranking, line dictionary, page attribution, the 250/50 chunker, line-index reassembly, flat-schema validation, dedupe. |
+| `upload-document.test.js` | The async contract — 202 + jobId, chunk metadata, TXT/PDF/DOCX through the indexed path, page provenance, fenced-JSON rescue, image-PDF split, model fallback, cancellation mid-parse. |
+| `jobs.test.js` | `/jobs/active` filtering and ordering, job status, cancel happy path / 404 / 400-on-terminal, and the F-01 regression: a cancelled job stays cancelled. |
+| `route-ordering.test.js` | `/questions/bulk` before `/:id`, `/jobs/active` before `/:jobId`, `/questions/search` — correct today, one careless reorder from silent breakage. |
+| `api.test.js` | Upload validation and upsert dedup, topic aggregation, quiz generation and answer-key secrecy. |
 
-### 7.3 Not covered
+**Frontend:** 1 suite — QuizEngine. **CI:** GitHub Actions runs backend tests plus frontend typecheck, tests and build on every PR and push to `main`.
 
-- Chunking and rehydration logic
-- Model-ladder fallback and rate-limit skip
-- Bulk update and search endpoints
-- Every manager component
+### 7.3 Still not covered
+
+- Manager components beyond QuizEngine — no frontend coverage of search, bulk edit or the review table.
+- Search returns results but is not asserted on ranking, partial matches or case.
+- The rate-limit cooldown map's cross-job behaviour.
 
 ### 7.4 The real gap
 
-There is no parse-accuracy harness. We can tell you a parse finished; we cannot tell you how much of the document it got right.
+There is still no parse-accuracy harness. We can now tell you a parse finished *and* that the machinery around it is correct; we still cannot tell you how much of the document it got right.
 
 ---
 
@@ -211,9 +225,29 @@ There is no parse-accuracy harness. We can tell you a parse finished; we cannot 
 | `main` <br>tag 1.0.0, 1.1.0 | **Baseline** | The whole product: AI upload, chunked streaming progress, subtopics, sources, bulk edit, resilient background parsing with polling, page tracking and chunk ordering. |
 | `TECHDL-10-1.1.0` <br>1 commit ahead of its base | **Landed** | A single fix: a `ReferenceError` in the chunking loop that was silently dropping questions from long uploads. |
 | `TEHCDL-10-1.2.0` <br>⚠ branch name is misspelled | **Landed** | Per-page text extraction for PDFs, smaller chunks, and pagination in both review and manager lists — including a fully custom items-per-page control. |
-| `TECHDL-10-1.3.0` <br>7 commits, branched off `main` | **Live · unmerged** | Extraction rewritten; JSON truncation on large docs fixed by cutting chunk size; rate-limit safety; background job tracking UI with instant cancellation; jobs visible during the parsing spinner; regex rescue for markdown-fenced JSON; image-PDF detection fix; the TECHDL-11 E2E test. |
+| `TECHDL-10-1.3.0` <br>merged via PRs #17 and #18 | **Landed** | Extraction rewritten; JSON truncation fixed by cutting chunk size; rate-limit safety; background job tracking UI with instant cancellation; regex rescue for fenced JSON; image-PDF detection fix; the TECHDL-11 E2E test — **plus Phases 0–2**: cancellation-status fix, API-base centralisation, the extracted parsing service, 116 backend tests and CI. |
+| `TECHDL-20-1.4.0` <br>merged via PR #19 | **Landed** | Phase 3 hygiene: `.gitattributes`, the five developer scripts homed under `backend/scripts/`, the README demo video pointed at the asset that exists. |
 
-1.3.0 is one theme end to end — **make large, messy documents survive parsing**. It should merge as a unit, behind the E2E suite.
+1.3.0 was one theme end to end — **make large, messy documents survive parsing** — and merged as a unit behind the green suite.
+
+### 8.1 What Phases 0–3 retired
+
+Findings F-01 … F-10 and F-13 from the audit are closed:
+
+- **F-01** — cancellation no longer surfaces as a generic failure.
+- **F-02 / F-03** — no component fetches `localhost:5000` directly; the rewrite destination is `BACKEND_ORIGIN`.
+- **F-04 / F-05** — the upload test suite was rewritten against the 202 contract and the indexed schema.
+- **F-06** — the pure pipeline logic was extracted and covered.
+- **F-07** — the branch is pushed and merged; the work is no longer one machine deep.
+- **F-08 / F-09** — build and test artifacts untracked, `.gitignore` added per package.
+- **F-10** — `.gitattributes` ends the CRLF churn.
+- **F-13** — stray scripts deleted or homed under `backend/scripts/` with a README.
+
+**F-14 does not hold.** The orphaned commit it describes as a "1-line README improvement" is one blank line; the section its message claims to add was already on `main`. Closed as nothing to recover, not recovered.
+
+**F-12 is only partly actionable** — the `TEHCDL` typo is baked into three merge commits already on `main`. Only the branch deletion and the go-forward naming convention are fixable.
+
+**F-11 (version drift) and F-15 … F-22 (documentation accuracy) are still open** — that is Phase 4.
 
 ---
 
@@ -221,23 +255,25 @@ There is no parse-accuracy harness. We can tell you a parse finished; we cannot 
 
 ### Blocking anything real
 
-- **No authentication** — every route is open. Anyone who can reach the API can delete the entire bank.
-- **Hardcoded `localhost:5000`** — three call sites bypass `API_BASE` and fetch the backend directly; they break outside dev.
+- **No authentication** — every route is open, including destructive bulk delete. Anyone who can reach the API can delete the entire bank.
+- **Client-side grading** — the answer key ships to the browser at quiz start. Fine for a study tool, not for assessment.
 
 ### Correctness & throughput
 
 - No parse-accuracy measurement — no golden document, no recall number.
-- Chunk concurrency is 1 — a 60-page PDF is strictly serial.
+- Chunk concurrency is 1 — a 60-page PDF is strictly serial, with a 2s courtesy pause between chunks.
 - Failed chunks are terminal — recorded, but there is no retry-just-these action.
 - Quiz state is memory-only — refresh mid-quiz and the attempt is gone.
+- The rate-limit cooldown map is in-process — it does not survive a restart and is wrong under multi-instance deploys.
 
-### Polish
+### Hygiene & polish — Phase 4
 
+- Version drift across six sources; 1.2.0 shipped untagged (F-11).
+- Stale doc claims (F-15 … F-22): `db:cleanup`, a missing `test:e2e` script, "Gemini 1.5 Flash", and `AI_UPLOAD_FEATURE.md` describing a `Source` field the AI never returns.
+- Merged branches still on `origin` — `TEHCDL-10-1.2.0`, `TECHDL-10-1.3.0`, `TECHDL-10-1.1.0`.
 - Native `alert` / `confirm` — deletion in the manager uses browser dialogs.
 - No attempt history — results are never stored, so there is no progress over time.
-- Question dots hidden on mobile — no small-screen equivalent for jumping around.
-- Dead helper in `api.ts` — `uploadQuestions` is unused; the modal fetches directly.
-- Misspelled branch — `TEHCDL-10-1.2.0`.
+- `documentController` is still ~610 LOC with a ~490-line handler; decomposition now has tests to lean on.
 
 ---
 
@@ -245,9 +281,10 @@ There is no parse-accuracy harness. We can tell you a parse finished; we cannot 
 
 ### Horizon 1 · close out 1.3.0 — land the resilience work
 
-- Merge 1.3.0 to `main` behind the E2E suite
-- Route every fetch through `API_BASE`
-- Rename the misspelled branch, delete merged ones
+Phases 0–3 are done: 1.3.0 is merged behind a green suite and CI, and the hygiene pass has landed. What is left:
+
+- Phase 4: one version scheme, backfill the 1.2.0 tag, fix F-15 … F-22 in one pass
+- Delete the merged branches on `origin`
 - Replace `confirm()` with the app's own dialog
 - Retry-failed-chunks action on a finished job
 
@@ -256,7 +293,7 @@ There is no parse-accuracy harness. We can tell you a parse finished; we cannot 
 - Golden-document harness: recall, tagging accuracy, cost per 100 questions
 - Token work 01–04 from §5
 - Raise chunk concurrency with a shared rate-limit budget
-- Unit tests for chunking and rehydration
+- Decompose `documentController` now that the pure logic is extracted and covered
 
 ### Horizon 3 · beyond one machine — multi-user
 
