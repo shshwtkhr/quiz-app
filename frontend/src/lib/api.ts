@@ -1,11 +1,31 @@
 import { TopicInfo, Question, AnswerKey, QuestionData } from '@/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+/**
+ * Every call in this module goes through API_BASE — nothing in the app should
+ * build a backend URL of its own.
+ *
+ * In the browser we always call the same origin and let the Next.js rewrite in
+ * next.config.ts proxy `/api/*` to the backend, which keeps us free of CORS.
+ * On the server there is no rewrite to ride on, so we address the backend
+ * directly via BACKEND_ORIGIN (the same variable the rewrite uses).
+ */
+const API_BASE = typeof window !== 'undefined'
+  ? '/api'
+  : (process.env.BACKEND_ORIGIN
+      ? `${process.env.BACKEND_ORIGIN}/api`
+      : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'));
 
-/** Fetch all available topics with question counts */
-export async function fetchTopics(): Promise<{ _id: string; count: number }[]> {
+/** Fetch all available topics with their subtopics and question counts */
+export async function fetchTopics(): Promise<TopicInfo[]> {
   const res = await fetch(`${API_BASE}/topics`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Failed to fetch topics');
+  return res.json();
+}
+
+/** Fetch all distinct sources currently in use */
+export async function fetchSources(): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/sources`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to fetch sources');
   return res.json();
 }
 
@@ -77,7 +97,10 @@ export async function uploadQuestions(data: unknown[]): Promise<unknown> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to upload questions');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || errorData.message || 'Failed to upload questions');
+  }
   return res.json();
 }
 
@@ -102,7 +125,7 @@ export async function uploadDocumentJob(file: File): Promise<{ jobId: string, me
 /** Get status of a background parsing job */
 export async function getJobStatus(jobId: string): Promise<{
   _id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   totalChunks: number;
   parsedQuestions: any[];
@@ -112,6 +135,23 @@ export async function getJobStatus(jobId: string): Promise<{
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to get job status');
+  }
+  return res.json();
+}
+
+/** Get all currently active parsing jobs */
+export async function getActiveJobs(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/jobs/active`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to fetch active jobs');
+  return res.json();
+}
+
+/** Cancel an active parsing job */
+export async function cancelJob(jobId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}/cancel`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to cancel job');
   }
   return res.json();
 }
