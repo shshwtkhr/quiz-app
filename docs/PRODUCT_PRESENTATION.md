@@ -1,6 +1,6 @@
 # QuizMaster — Product Presentation
 
-> **Version:** 1.3.0  
+> **Version:** 1.4.0  
 > **License:** MIT — Copyright © 2026 Shashwat Khare  
 > **Last Updated:** 1 August 2026 — revised after Phases 0–3 of [ARCHITECTURE_AND_ROADMAP.md](ARCHITECTURE_AND_ROADMAP.md) landed
 
@@ -230,9 +230,9 @@ There is still no parse-accuracy harness. We can now tell you a parse finished *
 
 1.3.0 was one theme end to end — **make large, messy documents survive parsing** — and merged as a unit behind the green suite.
 
-### 8.1 What Phases 0–3 retired
+### 8.1 What Phases 0–4 retired
 
-Findings F-01 … F-10 and F-13 from the audit are closed:
+Every finding in the audit is now closed except F-12, which is only partly fixable:
 
 - **F-01** — cancellation no longer surfaces as a generic failure.
 - **F-02 / F-03** — no component fetches `localhost:5000` directly; the rewrite destination is `BACKEND_ORIGIN`.
@@ -241,13 +241,15 @@ Findings F-01 … F-10 and F-13 from the audit are closed:
 - **F-07** — the branch is pushed and merged; the work is no longer one machine deep.
 - **F-08 / F-09** — build and test artifacts untracked, `.gitignore` added per package.
 - **F-10** — `.gitattributes` ends the CRLF churn.
+- **F-11** — one version scheme: `1.2.0` and `1.3.0` backfilled as tags, all three `package.json` files and every doc header on `1.4.0`.
 - **F-13** — stray scripts deleted or homed under `backend/scripts/` with a README.
+- **F-15 … F-22** — every false documentation claim corrected in one pass; `TESTING_GUIDE.md` folded into §8 of the technical doc and `AI_UPLOAD_FEATURE.md` retired.
 
 **F-14 does not hold.** The orphaned commit it describes as a "1-line README improvement" is one blank line; the section its message claims to add was already on `main`. Closed as nothing to recover, not recovered.
 
 **F-12 is only partly actionable** — the `TEHCDL` typo is baked into three merge commits already on `main`. Only the branch deletion and the go-forward naming convention are fixable.
 
-**F-11 (version drift) and F-15 … F-22 (documentation accuracy) are still open** — that is Phase 4.
+**F-14 and F-12 are the only findings not simply closed.** Everything else in the register is done; the four-phase remediation is complete.
 
 ---
 
@@ -266,11 +268,9 @@ Findings F-01 … F-10 and F-13 from the audit are closed:
 - Quiz state is memory-only — refresh mid-quiz and the attempt is gone.
 - The rate-limit cooldown map is in-process — it does not survive a restart and is wrong under multi-instance deploys.
 
-### Hygiene & polish — Phase 4
+### Polish
 
-- Version drift across six sources; 1.2.0 shipped untagged (F-11).
-- Stale doc claims (F-15 … F-22): `db:cleanup`, a missing `test:e2e` script, "Gemini 1.5 Flash", and `AI_UPLOAD_FEATURE.md` describing a `Source` field the AI never returns.
-- Merged branches still on `origin` — `TEHCDL-10-1.2.0`, `TECHDL-10-1.3.0`, `TECHDL-10-1.1.0`.
+- Merged branches still on `origin` — `TEHCDL-10-1.2.0`, `TECHDL-10-1.3.0`, `TECHDL-10-1.1.0`, `TECHDL-20-1.4.0`.
 - Native `alert` / `confirm` — deletion in the manager uses browser dialogs.
 - No attempt history — results are never stored, so there is no progress over time.
 - `documentController` is still ~610 LOC with a ~490-line handler; decomposition now has tests to lean on.
@@ -279,11 +279,10 @@ Findings F-01 … F-10 and F-13 from the audit are closed:
 
 ## 10. Roadmap
 
-### Horizon 1 · close out 1.3.0 — land the resilience work
+### Horizon 1 · close out 1.4.0 — remediation complete
 
-Phases 0–3 are done: 1.3.0 is merged behind a green suite and CI, and the hygiene pass has landed. What is left:
+All four phases have landed: 1.3.0 merged behind a green suite and CI, the hygiene pass, and one version scheme across tags, packages and docs. What is left:
 
-- Phase 4: one version scheme, backfill the 1.2.0 tag, fix F-15 … F-22 in one pass
 - Delete the merged branches on `origin`
 - Replace `confirm()` with the app's own dialog
 - Retry-failed-chunks action on a finished job
