@@ -1,9 +1,13 @@
 # QuizMaster
 
-A modern, full-stack Quiz Application powered by AI that can automatically generate quizzes from uploaded documents (PDF, DOCX, TXT) and allows users to manage, edit, and take quizzes with a beautiful, dynamic UI.
+Turn a document into a quiz. Drop in a PDF, DOCX or TXT; Gemini extracts the
+questions, you review and tag them, then take the quiz and read the explanations.
+
+> **Version:** 1.4.0 · **License:** MIT — Copyright © 2026 Shashwat Khare
 
 ## 🎥 Full Application Flow
-Below is a real-time recording of the complete application flow, validated by our automated End-to-End (E2E) testing framework:
+
+A real-time recording of the complete flow, validated by the automated E2E suite:
 
 <video src="https://github.com/shshwtkhr/quiz-app/raw/main/e2e-test/quiz_app_demo.mp4" width="100%" controls autoplay loop></video>
 
@@ -11,114 +15,84 @@ Below is a real-time recording of the complete application flow, validated by ou
 
 ## ✨ Features
 
-- **Document Upload**: Upload raw text files.
-- **AI-Powered Parsing**: Uses Google Gemini to parse content, extract topics, and generate questions, correct answers, and explanations.
-- **Context & Source Preservation**: Retains the specific source passage associated with each question and allows custom `source` tagging to provide grounded explanations.
-- **Dynamic Quiz Engine**: Test your knowledge on specific topics with randomized questions and a timer.
-- **Global & Topic Manager**: Easily search, inline-edit, categorize, and delete your questions across the entire database or within specific topics.
-- **Multi-Select Bulk Edit**: Select multiple questions at once to easily bulk-update their topic, subtopic, source, context, or explanation.
-- **E2E Testing**: Comprehensive end-to-end testing with **Playwright**, validating the full user flow from upload to quiz results.
-
-## 🧪 Testing
-
-The application includes a comprehensive End-to-End (E2E) testing suite powered by Playwright. The E2E tests validate the complete user journey:
-1. Uploading a document
-2. AI Question parsing
-3. Inline editing and Topic tagging
-4. Global Manager search and verification
-5. Playing a generated quiz and validating the Results page
-
-You can run the tests by navigating to the `e2e-test` directory and executing:
-```bash
-npm run test
-```
-To clean up the test-generated database records:
-```bash
-cd backend && npm run db:cleanup
-```
-
-## 🛠️ Tech Stack
-
-### Frontend
-- **Framework**: Next.js 15 (React 19)
-- **Styling**: Tailwind CSS 4 with custom UI components
-- **State Management**: Zustand
-- **Icons**: Lucide React
-- **Markdown Parsing**: React Markdown
-
-### Backend
-- **Runtime**: Node.js & Express
-- **Database**: MongoDB (Mongoose)
-- **AI Integration**: Google Generative AI (Gemini 1.5 Flash)
-- **Document Processing**: `pdf-parse` for PDFs and `mammoth` for DOCX
-
-## 📦 Project Structure
-
-The project is structured as a monorepo:
-- `/frontend`: Next.js web application
-- `/backend`: Node.js Express server API
+- **Document upload** — PDF, DOCX and TXT. Scanned PDFs with no extractable text are split into 5-page sub-documents and read with Gemini's vision models.
+- **AI-powered parsing** — models are discovered at runtime and ranked rather than hardcoded, with automatic fallback when one is rate-limited.
+- **Background jobs** — upload returns immediately with a job id; parsing continues if you close the tab, and can be cancelled mid-flight.
+- **Human review before saving** — nothing reaches the question bank until you have looked at the topic, subtopic and source tags.
+- **Context & source preservation** — each question keeps the passage it came from, so explanations are grounded in the document.
+- **Dynamic quiz engine** — randomised questions per topic, with a timer.
+- **Global & topic manager** — search, inline-edit, categorise and delete across the whole bank or within one topic.
+- **Multi-select bulk edit** — retag many questions at once.
 
 ## 🚦 Getting Started
 
-### 1. Backend Setup
+**Prerequisites:** Node.js 20+, a running MongoDB, and a Google Gemini API key.
+
+### 1. Backend
+
 ```bash
 cd backend
 npm install
-```
-Create a `.env` file in the `backend` directory:
-```env
-PORT=5000
-MONGODB_URI=mongodb://localhost:27017/quiz-app
-CORS_ORIGIN=http://localhost:3000
-GEMINI_API_KEY=your_gemini_api_key
-```
-Start the backend server:
-```bash
+cp .env.example .env    # then edit: MONGODB_URI, GEMINI_API_KEY
 npm run dev
 ```
 
-### 2. Frontend Setup
+### 2. Frontend
+
 ```bash
 cd frontend
 npm install
-```
-Start the frontend development server:
-```bash
 npm run dev
 ```
 
-The application will be available at `http://localhost:3000`.
+The app is then at `http://localhost:3000`.
 
-## 🧪 Testing
+> The browser only ever calls the frontend's own origin. Next.js proxies `/api/*`
+> to the backend, so set `BACKEND_ORIGIN` (see [frontend/.env.example](frontend/.env.example))
+> if your backend is not on `http://localhost:5000`.
 
-The project includes an End-to-End testing suite built with Playwright which covers the full user flow from uploading a document to taking the quiz and reviewing the results.
-
-### Full App Flow Testing Video
-
-A recording of the automated E2E test running through the entire application
-flow is at the [top of this README](#-full-application-flow); the file itself is
-[e2e-test/quiz_app_demo.mp4](e2e-test/quiz_app_demo.mp4).
-
-To run the tests locally:
+### 3. Tests
 
 ```bash
-cd e2e-test
-npm install
-npm run test
+cd backend && npm test
 ```
 
-To view the HTML report and recorded videos after a test run:
 ```bash
-cd e2e-test
-npm run report
+cd e2e-test && npm install && npm test
 ```
 
-### Database Cleanup
+E2E runs create records under a sentinel topic; remove them with
+`cd e2e-test && npm run cleanup`.
 
-The E2E tests will create mock topics (e.g. `E2E-TEST-TOPIC-...`) in the database. A cleanup script is provided to remove these test artifacts.
+## 🛠️ Tech Stack
 
-To clean the database of all E2E test data:
-```bash
-cd e2e-test
-npm run cleanup
-```
+| Layer | Choice |
+|---|---|
+| Frontend | Next.js 15 · React 19 · Tailwind CSS 4 · Zustand |
+| Backend | Node.js · Express · MongoDB (Mongoose) |
+| AI | `@google/genai` — Gemini, runtime model discovery with a scored fallback ladder |
+| Documents | `pdf-parse` (text) · `pdf-lib` (scan splitting) · `mammoth` (DOCX) |
+| Testing | Jest · Supertest · Playwright, with GitHub Actions CI on every PR |
+
+## 📦 Project Structure
+
+Three independent packages — each has its own `package.json`:
+
+- **`frontend/`** — Next.js application
+- **`backend/`** — Express API, with developer utilities in [`backend/scripts/`](backend/scripts/README.md)
+- **`e2e-test/`** — Playwright suite
+
+## 📚 Documentation
+
+| Document | For |
+|---|---|
+| [Technical Documentation](docs/TECHNICAL_DOCUMENTATION.md) | Architecture, API reference, schemas, environment, testing, deployment |
+| [User Manual](docs/USER_MANUAL.md) | Using the app |
+| [How the AI parsing works](docs/ai_parsing_explained_simple.md) | The pipeline, explained without jargon |
+| [Application Flow](docs/APPLICATION_FLOW.md) | Every screen and decision, as a diagram |
+| [Product Presentation](docs/PRODUCT_PRESENTATION.md) | Internal engineering review deck |
+| [Architecture & Roadmap](docs/ARCHITECTURE_AND_ROADMAP.md) | Point-in-time audit, findings register and remediation plan |
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
