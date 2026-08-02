@@ -7,6 +7,13 @@
   piece of work on the branch that happens to be checked out is exactly how the
   wrong branch gets used. Check whether the current branch already has an open or
   recently merged PR and say so, because that usually changes the answer.
+  - **Scope:** this covers anything that changes a file in this repository,
+    including documentation and config. It does **not** cover writes outside the
+    repository — scratch files, temporary scripts, an agent's own notes — which
+    never reach a branch and so need no confirmation.
+  - Asking costs one question; committing to the wrong branch costs a rebase, a
+    reopened PR, or work stranded on a branch nobody is reviewing. All three
+    happened on this project before the rule was tightened.
 - Branch names follow **`TECHDL-<ticket>-<semver>`** — for example
   `TECHDL-23-1.4.0`. Read the prefix back to the user before creating the branch;
   `TEHCDL-10-1.2.0` reached `main` as a typo and is now permanent in three merge
