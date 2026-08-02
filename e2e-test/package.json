@@ -1,6 +1,6 @@
 {
   "name": "quiz-app-e2e",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "description": "E2E testing suite for QuizMaster",
   "scripts": {
     "test": "playwright test",

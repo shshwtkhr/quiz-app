@@ -1,6 +1,6 @@
 # QuizMaster — User Manual
 
-> **Version:** 1.1.0  
+> **Version:** 1.4.0  
 > **Last Updated:** July 2026
 
 ---

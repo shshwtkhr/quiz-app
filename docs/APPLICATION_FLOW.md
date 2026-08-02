@@ -1,6 +1,6 @@
 # QuizMaster — Application Flow
 
-> **Version:** 1.3.0  
+> **Version:** 1.4.0  
 > **License:** MIT — Copyright © 2026 Shashwat Khare  
 > **Last Updated:** 1 August 2026
 

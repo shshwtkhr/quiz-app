@@ -1,6 +1,6 @@
 # QuizMaster — Technical Documentation
 
-> **Version:** 1.1.0  
+> **Version:** 1.4.0  
 > **License:** MIT — Copyright © 2026 Shashwat Khare  
 > **Last Updated:** July 2026
 
@@ -284,12 +284,18 @@ quiz-app/
 │
 ├── docs/
 │   ├── TECHNICAL_DOCUMENTATION.md   # This file
-│   └── USER_MANUAL.md               # End-user guide
+│   ├── USER_MANUAL.md               # End-user guide
+│   ├── APPLICATION_FLOW.md          # Every screen and decision
+│   ├── PRODUCT_PRESENTATION.md      # Engineering review deck
+│   ├── ARCHITECTURE_AND_ROADMAP.md  # Audit, findings, remediation plan
+│   ├── ai_parsing_explained_simple.md
+│   └── assets/                      # Rendered wireframe and deck
 │
+├── .github/workflows/ci.yml         # Backend + frontend on every PR
+├── .agents/AGENTS.md                # Workflow rules
+├── .gitattributes
 ├── .gitignore
-├── README.md
-├── AI_UPLOAD_FEATURE.md
-├── TESTING_GUIDE.md
+├── README.md                        # Orientation + quickstart, links out
 └── LICENSE
 ```
 
@@ -1426,6 +1432,15 @@ Also located in `e2e-test/` — standalone Puppeteer-based scripts:
 | [test-comprehension.js](file:///e:/Projects/quiz-app/e2e-test/test-comprehension.js) | Comprehension-specific flow test |
 | [test-volume.js](file:///e:/Projects/quiz-app/e2e-test/test-volume.js) | Volume/load testing |
 
+`record.js` drives the live app the way a user would — selects topics, adjusts the question count, starts the quiz, answers every question, and returns home. It injects a script that renders an expanding circle at the coordinates of each simulated click, so the automated run is traceable on playback. The result is the demo recording linked from the README.
+
+These are run directly, not through an npm script:
+
+```bash
+cd e2e-test
+node record.js
+```
+
 ### 8.5. E2E Test Data Cleanup
 
 ```bash
@@ -1557,7 +1572,12 @@ npm start      # Runs server.js without nodemon
 | `npm start` | `node server.js` | Production server |
 | `npm run dev` | `nodemon server.js` | Development server with hot-reload |
 | `npm test` | `jest --forceExit --detectOpenHandles` | Run backend tests |
-| `npm run db:cleanup` | `node cleanup-e2e.js` | Clean up E2E test data |
+
+> [!NOTE]
+> The backend has **no cleanup script**. E2E test data is removed from the
+> `e2e-test` package: `cd e2e-test && npm run cleanup`. Developer utilities live
+> in `backend/scripts/` and are run directly with `node` — see
+> [backend/scripts/README.md](file:///e:/Projects/quiz-app/backend/scripts/README.md).
 
 **Frontend (`frontend/package.json`):**
 
@@ -1569,7 +1589,10 @@ npm start      # Runs server.js without nodemon
 | `npm run lint` | `next lint` | ESLint check |
 | `npm test` | `jest` | Run component tests |
 | `npm run test:watch` | `jest --watch` | Jest watch mode |
-| `npm run test:e2e` | `playwright test` | Run Playwright E2E tests |
+
+> [!NOTE]
+> The frontend has **no `test:e2e` script**. Playwright lives in its own package:
+> `cd e2e-test && npm test`.
 
 **E2E Tests (`e2e-test/package.json`):**
 

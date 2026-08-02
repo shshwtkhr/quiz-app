@@ -305,20 +305,33 @@ Verified claim-by-claim against the filesystem:
 
 Five phases, ordered by *risk retired per unit of effort*. Phases 0–1 are strongly recommended before any further feature work.
 
-> **Status — 1 August 2026.** Phases 0–3 are **complete**. Phases 0–2 shipped on
-> `TECHDL-10-1.3.0` (PRs #17 and #18, both merged); Phase 3 is on
-> `TECHDL-20-1.4.0`. The findings register below is preserved as written at
-> audit time; consult this block for current state.
+> **Status — 1 August 2026. All five phases are complete.** The findings register
+> below is preserved as written at audit time; consult this block for current state.
 >
-> Retired: **F-01 – F-13**. **Phase 4 remains open** (F-11, F-15 … F-22).
+> | Phase | Branch | PR |
+> |---|---|---|
+> | 0–1 Secure & correctness | `TECHDL-10-1.3.0` | #17 |
+> | 2 Quality gate | `TECHDL-10-1.3.0` | #18 |
+> | 3 Hygiene | `TECHDL-20-1.4.0` | #19 |
+> | 4 Standardisation | `TECHDL-23-1.4.0` | this one |
+>
+> **Every finding is retired except F-12, which is only partly fixable.**
 >
 > - The backend suite went from **17 passed / 3 failed** to **116 passed / 0 failed**
 >   across 5 files, and CI runs backend + frontend on every PR.
+> - **F-11 is closed.** One version scheme: `1.2.0` and `1.3.0` backfilled as tags,
+>   all three `package.json` files and every `docs/` header on `1.4.0`, git tag
+>   canonical.
 > - **F-14 does not hold — see the correction below.** It is closed as "nothing to
 >   recover", not as "recovered".
 > - **F-12 is partly unfixable.** The typo is baked into merge commits already on
 >   `main`; rewriting that history is not worth it. Only the branch deletion and
->   the naming convention are actionable.
+>   the naming convention are actionable — the convention is now in
+>   `.agents/AGENTS.md`; the deletion is left to the repository owner.
+>
+> **What remains is not remediation.** Deleting the merged branches, replacing
+> `confirm()`, a retry-failed-chunks action, and the parse-accuracy harness are
+> product work, tracked in [PRODUCT_PRESENTATION.md](PRODUCT_PRESENTATION.md#10-roadmap).
 
 ```mermaid
 gantt
@@ -449,6 +462,21 @@ Document `BACKEND_ORIGIN` in `.env.example` and the technical doc. **Decision ne
 ### Phase 4 — Standardisation
 
 **Retires:** F-11, F-15 … F-22
+
+> **Done.** Notes on how it differed from the plan:
+>
+> - **Item 1** — `1.4.0` chosen as the release. Backfilled `1.2.0` on `dc615da`
+>   and `1.3.0` on `94ca028`, both pushed. The three `package-lock.json` files
+>   carry the version too; they were edited in place rather than regenerated, so
+>   `npm ci` (which CI runs) still validates. Verified on all three packages.
+> - **Item 2** — F-17 and F-20 had already been fixed in Phases 2 and 3.
+> - **Item 3** — done as planned. Two latent breakages surfaced while
+>   documenting: `record.js` wrote its recording to a hardcoded path inside one
+>   machine's home directory, and `test_upload.pdf` (which it generates) was not
+>   ignored. Both fixed rather than documented as-is.
+> - **Item 5** — the naming convention and the typo class are now in the
+>   `.agents/AGENTS.md` PR checklist, along with the branch-confirmation rule
+>   that was too loosely worded to be followed.
 
 1. **Single source of version truth.** Pick one scheme — recommend: git tag is canonical, all three `package.json` versions match it, docs carry the same number. Reconcile `frontend` `0.1.0` → real version. **Backfill the `1.2.0` tag** on `dc615da`. Tag `1.3.0` at the 1.3.0 merge.
 2. **Fix every documentation claim in F-15 … F-22** in one pass — these are cheap, and each one currently sends a reader to a command that fails.

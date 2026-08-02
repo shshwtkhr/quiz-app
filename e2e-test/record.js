@@ -1,3 +1,4 @@
+const path = require('path');
 const puppeteer = require('puppeteer');
 const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
 
@@ -16,7 +17,14 @@ const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
     aspectRatio: '16:9',
   });
   
-  const savePath = 'C:\\Users\\shshw\\.gemini\\antigravity\\brain\\748df810-c6af-407e-9e65-3e2754791fd2\\quiz_app_demo.mp4';
+  // Writes the canonical demo recording next to this script. Was previously a
+  // hardcoded absolute path into one machine's home directory, so the script
+  // could not run anywhere else. Override with an argument if needed.
+  const savePath = process.argv[2]
+    ? path.resolve(process.argv[2])
+    : path.join(__dirname, 'quiz_app_demo.mp4');
+
+  console.log('Recording to', savePath);
   
   await recorder.start(savePath);
   
