@@ -205,19 +205,46 @@ capability**, not cost.
 
 ### What would justify multi-provider
 
-1. **Quota headroom** — the actual failure in this run. Enabling billing is the
-   cheaper first answer.
-2. **Vendor independence** — today a Google outage stops the product.
-3. **Measured quality differences** — once Gemini quota was spent, Gemma became
-   the workhorse and produced the **worst answer accuracy in the corpus (22 %)**.
-   Extraction quality varies materially between models and is currently
-   unmeasured.
+1. **Extraction accuracy — the primary driver.** Quality varies materially
+   between models, and that variance decides whether a parsed paper is usable at
+   all. Per-paper answer accuracy ranged **22 % to 71 %** across the corpus, and
+   the paper that ran mostly on Gemma scored lowest:
+
+   | Paper | Models that did the work | Answer accuracy |
+   |---|---|---|
+   | 1 | `gemini-2.5-flash`, `2.5-flash-lite`, `gemma-4-26b` | 41 % |
+   | 2 | `gemini-2.5-flash-lite`, `gemma-4-26b` | 35 % |
+   | 3 | mostly `gemma-4-26b` / `gemma-4-31b` | **22 %** |
+
+   The ladder made that substitution silently — `getScore` awards Gemma **10**
+   on no pattern match plus the stable bonus, so the weakest model in the pool
+   became the workhorse once quota ran out.
+
+   > **The honest caveat:** this data cannot cleanly attribute the variance to
+   > the model. The dominant cause of wrong answers was structural (§2), sample
+   > sizes per model are small, and the papers differ. The conclusion is not
+   > *"Gemma is bad"* — it is that **we select models by name-matching heuristic,
+   > with no measurement, and the observed spread is large enough to matter.**
+   > That is what [#34](https://github.com/shshwtkhr/quiz-app/issues/34) exists
+   > to fix, and why it must precede any provider adoption.
+
+2. **Quota headroom** — the operational failure in this run. Enabling billing is
+   the cheaper first answer.
+3. **Vendor independence** — today a Google outage stops the product.
 4. **Data policy** — see §4.
+5. ~~Cost~~ — not a factor. The entire spread is ~$0.22 per eight papers.
 
 > [!WARNING]
-> Do not adopt a new provider before the two-pass work lands. A better model
-> cannot supply an answer that sits 900 lines outside its context window. Fix
-> the structure first, then compare providers on a workload that can succeed.
+> **Sequence matters here.** Do not adopt a new provider before the two-pass
+> work lands — a better model cannot supply an answer that sits 900 lines
+> outside its context window, so measuring models first would measure the
+> structural problem, not the models. And do not adopt one before the
+> evaluation harness exists either: a provider abstraction without measurement
+> only adds more unmeasured choices.
+>
+> Order: [#27](https://github.com/shshwtkhr/quiz-app/issues/27) structure →
+> [#34](https://github.com/shshwtkhr/quiz-app/issues/34) measurement →
+> [#2](https://github.com/shshwtkhr/quiz-app/issues/2) providers.
 
 Sources: [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/) ·
 [Nova pricing](https://aws.amazon.com/nova/pricing/) ·
@@ -234,10 +261,32 @@ shippable. Tracking: [#32](https://github.com/shshwtkhr/quiz-app/issues/32).
 
 | Issue | Work |
 |---|---|
-| [#23](https://github.com/shshwtkhr/quiz-app/issues/23) | Enable Gemini API billing |
+| [#23](https://github.com/shshwtkhr/quiz-app/issues/23) | Enable Gemini API billing, behind a monthly spend cap |
 
 The 4.9-hour run was $0.26 of tokens. This is the cheapest and fastest
 improvement available and requires no change to the codebase.
+
+**Set a spend cap first.** Google Cloud spend caps are a hard stop, not just an
+alert — at 100 % of target, "usage of your specified services is automatically
+paused until you *manually* lift the spend cap". Gemini API is an eligible
+service, and a cap can be scoped to a single project from AI Studio
+(*Spend* → *Monthly spend cap*). Alerts fire at 50 % and 80 %.
+
+| Cap | Headroom at Flash pricing |
+|---|---|
+| **$5/month** | ~19 full 8-paper runs — recommended |
+| $10/month | ~39 runs |
+| $1/month | ~4 runs — tight, but a genuine hard stop |
+
+Caveats worth knowing: enforcement uses *estimated* gross cost and is not
+instant, so slight overage is billed as normal; in-flight requests complete;
+and once tripped the cap must be lifted manually, which stops parsing until
+someone acts.
+
+> Set the cap **before** enabling billing. The unbounded retry loop in
+> [#28](https://github.com/shshwtkhr/quiz-app/issues/28) — one chunk accumulated
+> 28 failed attempts — is exactly the failure mode a cap protects against, and
+> it is not fixed yet.
 
 ### Phase 1 — Stop the silent loss · small, high value
 
@@ -282,11 +331,16 @@ differently-wrong web answer is not progress), and **offline measurement against
 the known keys before it is enabled by default**. Search results for exam
 questions are frequently other people's wrong answers.
 
-### Phase 5 — Provider resilience
+### Phase 5 — Measure, then diversify
 
 | Issue | Work |
 |---|---|
+| [#34](https://github.com/shshwtkhr/quiz-app/issues/34) | Per-model evaluation harness — pin a model, score it against the known keys |
 | [#2](https://github.com/shshwtkhr/quiz-app/issues/2) | Additional model providers — re-scoped, see §5 |
+
+In that order. Model choice is currently a name-matching heuristic with no
+measurement behind it; #34 is what makes the provider decision an evidence-based
+one rather than another guess.
 
 ### Phase 6 — Robustness and polish
 
