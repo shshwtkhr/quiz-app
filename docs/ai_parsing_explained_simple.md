@@ -49,7 +49,29 @@ When a robot successfully reads a chunk, it looks for five things:
 
 The robot hands back a perfect puzzle piece with all this information nicely organized!
 
-## 8. 🏆 The Grand Finale (Saving to Database)
+## 8. 🧐 When the Magic Doesn't Work
+
+Our librarian has one big assumption: that a question and its answer are **close
+together** in the book.
+
+Some books aren't like that. Exam papers often put *all* the questions at the
+front and *all* the answers at the back — hundreds of pages apart. When the
+librarian cuts the book into chunks, a chunk holds the question **or** the
+answer, never both.
+
+So the robot reading that chunk sees a perfectly good question, but has no idea
+which option is right. And because the librarian was told "only keep questions
+where you know the answer", it quietly threw them away — then reported
+"Success!" as if the chunk had simply been empty.
+
+We tested this on 8 real exam papers with 800 questions. Fewer than half made it
+through, and **not one paper could be saved**. It isn't the robots' fault and a
+smarter robot wouldn't help — you cannot answer a question using a page you were
+never shown. Fixing it means reading the questions and the answers **separately**
+and matching them up by number afterwards. That work is planned in
+[PARSING_REMEDIATION_PLAN.md](PARSING_REMEDIATION_PLAN.md).
+
+## 9. 🏆 The Grand Finale (Saving to Database)
 Once all the chunks are read and turned into puzzle pieces, the Head Librarian puts them all together. If the robots accidentally found the exact same question twice, the librarian throws the extra one away (this is called **Deduplication**). 
 
 Finally, the librarian puts all your brand-new quiz questions on the shelf (the Database), and your game is ready to play! 🎉

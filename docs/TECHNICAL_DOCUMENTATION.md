@@ -288,6 +288,7 @@ quiz-app/
 │   ├── APPLICATION_FLOW.md          # Every screen and decision
 │   ├── PRODUCT_PRESENTATION.md      # Engineering review deck
 │   ├── ARCHITECTURE_AND_ROADMAP.md  # Audit, findings, remediation plan
+│   ├── PARSING_REMEDIATION_PLAN.md  # Extraction accuracy, cost, provider comparison
 │   ├── ai_parsing_explained_simple.md
 │   └── assets/                      # Rendered wireframe and deck
 │
@@ -829,6 +830,17 @@ The controller first checks the MongoDB `Config` collection for a stored `GEMINI
 - **Text documents:** Every non-blank line is assigned an index and recorded in a server-side dictionary along with the page it came from (derived from the `___PAGE_START_n___` markers, which are consumed here rather than indexed). The line-numbered text is then split into windows of **max 250 lines with a 50-line overlap** — the overlap ensures a question straddling a boundary is seen whole by at least one chunk, and the resulting duplicates are removed later by `question_text` dedup.
 
 The chunker, the line dictionary and the page-range derivation live in [services/documentParsing.js](file:///e:/Projects/quiz-app/backend/src/services/documentParsing.js) as pure functions, and are unit-tested directly.
+
+> [!WARNING]
+> **Known limitation — chunking assumes a question sits near its answer.**
+> Documents that place all questions first and all solutions afterwards break
+> this: measured gaps of 870–1,100 lines against a 250-line window mean no chunk
+> can contain a question together with its answer, so the model can supply
+> neither a correct option nor an explanation. A test run over 8 such papers
+> recovered 45 % of questions and could save **none** of them. This is the root
+> cause tracked in [PARSING_REMEDIATION_PLAN.md](PARSING_REMEDIATION_PLAN.md)
+> and [#27](https://github.com/shshwtkhr/quiz-app/issues/27); the 50-line overlap
+> addresses boundary-straddling questions only.
 
 #### Step 4: Job Creation & Immediate Response
 
