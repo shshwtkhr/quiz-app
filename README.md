@@ -92,6 +92,7 @@ Three independent packages — each has its own `package.json`:
 | [Application Flow](docs/APPLICATION_FLOW.md) | Every screen and decision, as a diagram |
 | [Product Presentation](docs/PRODUCT_PRESENTATION.md) | Internal engineering review deck |
 | [Architecture & Roadmap](docs/ARCHITECTURE_AND_ROADMAP.md) | Point-in-time audit, findings register and remediation plan |
+| [Parsing Remediation Plan](docs/PARSING_REMEDIATION_PLAN.md) | Extraction accuracy: what the 4 Aug test run found, cost analysis, provider comparison, phased plan |
 
 ## 📄 License
 
