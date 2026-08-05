@@ -477,6 +477,12 @@ Document `BACKEND_ORIGIN` in `.env.example` and the technical doc. **Decision ne
 > - **Item 5** — the naming convention and the typo class are now in the
 >   `.agents/AGENTS.md` PR checklist, along with the branch-confirmation rule
 >   that was too loosely worded to be followed.
+>   **Superseded since:** the convention has been split by tracker. Work from a
+>   **GitHub issue** uses `GH-<issue-no>-<semver>`; `TECHDL-<ticket>-<semver>`
+>   now applies only to **Jira**-tracked work. Both end in the semver of the
+>   target release; only the prefix and identifier differ. Item 5 below, and every
+>   `TECHDL-` branch named elsewhere in this document, are the audit-time record
+>   and remain correct as history — see `.agents/AGENTS.md` for the live rule.
 
 1. **Single source of version truth.** Pick one scheme — recommend: git tag is canonical, all three `package.json` versions match it, docs carry the same number. Reconcile `frontend` `0.1.0` → real version. **Backfill the `1.2.0` tag** on `dc615da`. Tag `1.3.0` at the 1.3.0 merge.
 2. **Fix every documentation claim in F-15 … F-22** in one pass — these are cheap, and each one currently sends a reader to a command that fails.

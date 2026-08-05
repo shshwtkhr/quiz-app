@@ -14,10 +14,28 @@
   - Asking costs one question; committing to the wrong branch costs a rebase, a
     reopened PR, or work stranded on a branch nobody is reviewing. All three
     happened on this project before the rule was tightened.
-- Branch names follow **`TECHDL-<ticket>-<semver>`** — for example
-  `TECHDL-23-1.4.0`. Read the prefix back to the user before creating the branch;
-  `TEHCDL-10-1.2.0` reached `main` as a typo and is now permanent in three merge
-  commit messages.
+- Branch names depend on **where the work was tracked**. Pick the scheme that
+  matches the tracker the task came from — they are not interchangeable, and the
+  prefix is how anyone later finds the ticket the branch belongs to.
+
+  | Work tracked in | Format | Example |
+  |---|---|---|
+  | **GitHub issue** | **`GH-<issue-no>-<semver>`** | `GH-12-1.5.0` |
+  | **Jira ticket** | **`TECHDL-<ticket>-<semver>`** | `TECHDL-23-1.4.0` |
+
+  Only the prefix and the identifier differ — the prefix names the tracker, the
+  identifier names the ticket, and both schemes end in the **semver of the
+  release the work is intended to land in**.
+
+  - `<issue-no>` is the GitHub issue number, without a `#`.
+  - `<semver>` is the target release version, not the current one. Several
+    branches may share a version when several features land in the same
+    release; that is expected, not a clash.
+  - Read the prefix back to the user before creating the branch.
+    `TEHCDL-10-1.2.0` reached `main` as a typo and is now permanent in three
+    merge commit messages, so the check is worth the one line it costs.
+  - Historical branches on this repository all use the `TECHDL-` form, which
+    predates the GitHub-issue workflow. Do not rename or rewrite them.
 - Once finished working, commit the changes and push the branch.
 - Remind the user to raise a PR to the `main` branch, or use GitHub tools to raise the PR yourself if available.
 - Ask the user for the PR title prefix to be added to the commits/PR.
@@ -48,7 +66,9 @@ follow-up work:
 ## PR Checklist
 Confirm each of these before raising a PR:
 
-- [ ] Branch name matches `TECHDL-<ticket>-<semver>`, spelled correctly
+- [ ] Branch name matches the scheme for its tracker, spelled correctly —
+      `GH-<issue-no>-<semver>` for GitHub issues,
+      `TECHDL-<ticket>-<semver>` for Jira
 - [ ] Backend tests pass (`cd backend && npm test`)
 - [ ] Frontend typecheck and tests pass (`cd frontend && npx tsc --noEmit && npm test`)
 - [ ] Docs updated per the rules above, if routes, schemas, scripts, env vars or the parsing mechanism changed
